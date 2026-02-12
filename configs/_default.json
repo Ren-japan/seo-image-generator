@@ -1,0 +1,30 @@
+{
+  "brand_name": "",
+  "site_url": "",
+  "brand_tone": "professional and approachable",
+  "language": "Japanese",
+  "primary_color": "#3B82F6",
+  "secondary_color": "#10B981",
+  "accent_color": "#F59E0B",
+  "background_color": "#FFFFFF",
+  "text_color": "#1F2937",
+  "danger_color": "#E74A3B",
+  "illustration_style": "flat minimal",
+  "line_weight": "2.8〜3.2px統一の安定感のあるベクター線画",
+  "character_style": "4頭身前後、点の目＋小さな口の記号的表現",
+  "fill_style": "フラット塗り（影・ハイライト・立体感なし）",
+  "font_family": "Noto Sans JP Medium",
+  "card_style": "白背景(#FFFFFF) + 角丸28px + 極薄枠線(1px)",
+  "spacing": "広めに均等（詰め込み禁止）",
+  "image_sizes": {
+    "article": {"width": 886, "height": 600, "label": "記事内画像"},
+    "mv": {"width": 1200, "height": 630, "label": "MV/アイキャッチ"},
+    "ogp": {"width": 1200, "height": 630, "label": "OGP画像"}
+  },
+  "layout_types": ["分類型", "比較型", "フロー型", "ピラミッド型", "アイコン軽量型"],
+  "prohibited_elements": "- 手書き風、クレヨン風、水彩風のタッチ\n- 3D、ドロップシャドウ、グラデーションの使用\n- 指定色以外の使用\n- 説明文の長文化\n- 抽象的な背景パターンの挿入",
+  "additional_notes": "",
+  "logo_key": "",
+  "logo_position": "bottom-right",
+  "logo_size_pct": 0.08
+}
