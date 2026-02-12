@@ -200,13 +200,16 @@ IMAGE_GENERATION_TEMPLATE = """{design_system_prompt}
 IMAGE_GENERATION_WITH_REF_TEMPLATE = """添付の参照画像と同じビジュアルスタイルで、{layout_type}のインフォグラフィック画像を作成してください。
 スタイル（色・線・塗り・人物タッチ・カード形状・余白）はすべて参照画像を模倣すること。
 
-【タイトル】{conclusion}
+【この画像の目的】{purpose}
+【読者が得る結論】{conclusion}
 
 {blocks_text}
 
 【構成】{composition_description}
 
-テキストは{language}で記述。画像内テキストは合計100文字以内。サイト名は入れない。
+- 各ブロックのイラストは大きく、具体的に描く（アイコンではなく人物・モノの場面描写）
+- テキストは{language}で記述。画像内テキストは合計100文字以内
+- サイト名・ブランド名は画像内に入れない
 """
 
 # 参照画像なし時に使う従来のスタイルトランスファー指示（フォールバック）
@@ -267,14 +270,8 @@ def render_proposal_prompt(article_text: str, config: dict) -> str:
     )
 
 
-def render_generation_prompt(
-    design_system: str,
-    proposal: dict,
-    aspect_ratio: str,
-    language: str = "Japanese",
-    has_reference_images: bool = False,
-) -> str:
-    """デザインシステム + 画像案から最終生成プロンプトを組み立てる"""
+def _build_blocks_text(proposal: dict) -> str:
+    """proposalのblocksをテキスト化する共通処理"""
     blocks = proposal.get("blocks", [])
     if blocks and isinstance(blocks[0], dict):
         lines = []
@@ -284,11 +281,33 @@ def render_generation_prompt(
             if illust:
                 line += f"　→ イラスト: {illust}"
             lines.append(line)
-        blocks_text = "\n".join(lines)
-    else:
-        blocks_text = "\n".join(f"- {b}" for b in blocks)
+        return "\n".join(lines)
+    return "\n".join(f"- {b}" for b in blocks)
 
-    base_prompt = IMAGE_GENERATION_TEMPLATE.format(
+
+def render_generation_prompt(
+    design_system: str,
+    proposal: dict,
+    aspect_ratio: str,
+    language: str = "Japanese",
+    has_reference_images: bool = False,
+) -> str:
+    """デザインシステム + 画像案から最終生成プロンプトを組み立てる"""
+    blocks_text = _build_blocks_text(proposal)
+
+    # 参照画像がある場合 → 短縮プロンプト（スタイルは画像に任せる）
+    if has_reference_images:
+        return IMAGE_GENERATION_WITH_REF_TEMPLATE.format(
+            layout_type=proposal.get("layout_type", ""),
+            purpose=proposal.get("purpose", ""),
+            conclusion=proposal.get("conclusion", ""),
+            blocks_text=blocks_text,
+            composition_description=proposal.get("composition_description", ""),
+            language=language,
+        )
+
+    # 参照画像なし → 従来のフルプロンプト
+    return IMAGE_GENERATION_TEMPLATE.format(
         design_system_prompt=design_system,
         layout_type=proposal.get("layout_type", ""),
         reader_mindset=proposal.get("reader_mindset", ""),
@@ -299,9 +318,3 @@ def render_generation_prompt(
         aspect_ratio=aspect_ratio,
         language=language,
     )
-
-    # 参照画像がある場合、スタイルトランスファー指示を先頭に付与
-    if has_reference_images:
-        return STYLE_TRANSFER_PREFIX + base_prompt
-
-    return base_prompt
