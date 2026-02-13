@@ -369,33 +369,74 @@ MV_GENERATION_WITH_SPEC_TEMPLATE = """添付の参照画像と同じレイアウ
 テキストはすべて{language}で記述。指定文字列のみ描画し、余計な文字を追加しない。
 """
 
-# MV用 Layer3（参照画像あり・デザイン仕様書なし）: 参照画像スタイルを模倣
-# 参照画像で伝わる「見た目」はそのまま任せ、見落としがちなサイズ感・人物だけ補強
-MV_GENERATION_WITH_REF_TEMPLATE = """添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えてください。
+# MV用 Layer3（参照画像あり・デザイン仕様書なし）: 参照画像 + サイト別補強ヒント
+# Trial 16: 3層アーキテクチャ（参照画像主役 + 構造変数 + 条件付きoverrides）
+#
+# 設計思想:
+#   Layer A: 参照画像がスタイルの主役（フォント・色・装飾は参照画像に委ねる）
+#   Layer B: 構造系変数（person_crop等）でGeminiが苦手な空間配置のみ補強
+#   Layer C: style_overrides（オプション）で参照画像だけでは伝わらない例外ルールのみ上書き
+#
+# JMROのように参照画像5枚+構造変数のみで80点超が出るケースでは
+# overridesは空になり、「完全コピー」のみで矛盾ゼロのプロンプトになる。
+#
+# configの mv_style_hints に以下のキー:
+#   [構造系 - 常に使用]
+#   person_position    — 人物の配置位置（右側/左側）
+#   person_size        — 人物の大きさ（高さ何%）
+#   person_crop        — 人物のはみ出し方（右端で切れてよい等）
+#   person_bottom      — 人物の足元処理（下端に接する等）
+#   text_person_layer  — テキストと人物の前後関係（前面/背面）
+#   background_style   — 背景のスタイル（白ベース+装飾 等）
+#   supplement_style   — 補足テキストの表示スタイル
+#   [装飾系 - オプション。overridesとして条件付き注入]
+#   style_overrides    — 参照画像コピーへの上書きルール（文字列。なければ注入しない）
+MV_GENERATION_WITH_REF_TEMPLATE = """添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
+
+【最重要原則】
+参照画像のレイアウト構造・テキスト配置順序・フォント・色・装飾・背景・カード形状を完全にコピーすること。
+参照画像に存在する要素だけを描画し、存在しない要素は絶対に追加しないこと。
 
 {color_instruction}
 
-== 最重要: 人物の描き方（参照画像を見て確認すること） ==
-- 人物は画像の右側に配置し、画像の高さの80%以上を占める大きさにする
-- 人物の右腕や右肩は画像の右端で切れてよい（はみ出すほど大きく）
-- 人物の足元は画像の下端に接する
-- 人物の背後に壁・窓・家具・床の線は描かない。人物は切り抜き写真のように背景と直接溶け込む
-- テキストは人物の前面に重ねて表示する（人物がテキストの後ろにいる）
-
-== 背景（参照画像と同じように） ==
-- 白ベースに、参照画像にある淡い曲線やグラデーション装飾も再現する
-
-== テキスト（参照画像と同じサイズ・装飾・色で。文字列は一字一句正確に） ==
-- 「{hook_text}」→ 左上の小さい角丸ラベル（参照画像と同じスタイル）
-- 「{main_title}」→ 画面の半分を占める超巨大太字（参照画像と同じ縁取り・装飾）
-- 「{subtitle}」→ 参照画像のサブタイトルと同じ色・サイズ・装飾
-- 「{band_text}」→ 参照画像と同じスタイルのボックス内（色・角丸・影も同じに）
-- 「{supplement_text}」→ 下部の小さい文字（真っ黒#000は避け、#333〜#444の柔らかい濃色）
+== 人物 ==
+- {person_crop}
+- 配置: {person_position}
+- 大きさ: {person_size}
+- 足元: {person_bottom}
+- {text_person_layer}
 - 人物: {person_description}
 
-重要: 上記「」内の文字列を一字一句そのまま描画すること。文言を変えたり省略したり追加しない。
-テキストは{language}のみ。
+== 背景 ==
+{background_style}
+
+== テキスト要素（文字列だけ差し替え。位置・順序・装飾は参照画像と完全に同じに） ==
+{text_slots}
+{style_overrides}
+【テキストルール】
+- 上記「」内の文字列を一字一句そのまま描画する。文言を変えたり省略したり追加しない
+- テキストの配置順序は参照画像と同じにする（参照画像で上にあるものは上に、下にあるものは下に）
+- 参照画像に存在しないテキスト要素は描画しない
+- テキストは{language}のみ
 """
+
+# MV用 Layer3（参照画像あり・スロット構造検出済み）: 超シンプル版
+# mv_slot_structure がある場合のみ使用。参照画像に全て委ね、テキスト内容だけ差し替える。
+MV_GENERATION_WITH_SLOT_STRUCTURE_TEMPLATE = """添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
+
+参照画像のレイアウト・色・フォント・装飾・背景・カード形状を全てコピーする。
+参照画像に存在する要素だけを描画する。存在しない要素は追加しない。
+
+{color_instruction}
+
+== 差し替えるテキスト ==
+{text_slots}
+
+== 差し替える人物 ==
+{person_description}
+
+上記「」内の文字列を一字一句正確に描画する。それ以外のテキストは追加しない。テキストは{language}のみ。
+{style_overrides}"""
 
 # MV用 Layer3（参照画像なし）: テンプレート型フルプロンプト
 # 色はサイトカラーパレット or AI自動判断。構造・比率・装飾のみ固定。
@@ -528,49 +569,151 @@ def _build_blocks_text(proposal: dict) -> str:
     return "\n".join(f"- {b}" for b in blocks)
 
 
-def render_mv_proposal_prompt(article_title: str, article_text: str) -> str:
-    """記事タイトルと本文からMV画像案提案プロンプトを生成"""
-    return MV_PROPOSAL_TEMPLATE.format(
-        article_title=article_title,
-        article_text=article_text[:3000],  # 本文は概要把握用なので3000文字で切る
-    )
+def render_mv_proposal_prompt(
+    article_title: str,
+    article_text: str,
+    mv_slot_structure: dict | None = None,
+) -> str:
+    """記事タイトルと本文からMV画像案提案プロンプトを生成。
+
+    mv_slot_structure がある場合、検出されたスロットのみ生成させる。
+    """
+    if not mv_slot_structure or "slots" not in mv_slot_structure:
+        # フォールバック: 従来の5スロット版
+        return MV_PROPOSAL_TEMPLATE.format(
+            article_title=article_title,
+            article_text=article_text[:3000],
+        )
+
+    # スロット構造対応版: 検出されたスロットのみ生成させる
+    slots = mv_slot_structure["slots"]
+    absent = mv_slot_structure.get("absent_slots", [])
+
+    # スロット説明を組み立て
+    role_labels = {
+        "hook": ("煽りテキスト", "好奇心を刺激する短いフレーズ（5〜10文字）"),
+        "main_title": ("メインタイトル", "記事の主題となる商品名・キーワード（2〜15文字）"),
+        "subtitle": ("サブタイトル", "読者の疑問や関心事（8〜15文字）"),
+        "band_text": ("帯テキスト", "記事のベネフィットを一文で（10〜20文字）"),
+        "supplement_text": ("補足テキスト", "記事でわかることの補足（15〜25文字）"),
+    }
+
+    slot_lines = []
+    json_keys = []
+    for s in slots:
+        role = s["role"]
+        label, guide = role_labels.get(role, (role, ""))
+        slot_lines.append(f"- {label}（{role}）: {guide}")
+        json_keys.append(f'    "{role}": "{label}"')
+
+    slot_section = "\n".join(slot_lines)
+    json_fields = ",\n".join(json_keys)
+
+    absent_section = ""
+    if absent:
+        absent_labels = [role_labels.get(a, (a, ""))[0] for a in absent]
+        absent_section = (
+            "\n※ 以下のスロットはこのMVデザインに存在しない。生成してはならない:\n"
+            + "\n".join(f"- {lbl}" for lbl in absent_labels)
+        )
+
+    prompt = f"""あなたはSEO記事のMV（メインビジュアル/アイキャッチ画像）のコピーライターです。
+
+記事のタイトルと本文から、MV画像に入れるテキスト・ビジュアル要素の案を1〜3パターン考えてください。
+
+== 記事タイトル ==
+{article_title}
+
+== 記事本文（概要把握用） ==
+{article_text[:3000]}
+
+== このMVに存在するテキストスロット ==
+{slot_section}
+{absent_section}
+
+== 出力形式（JSON配列で必ず出力） ==
+```json
+[
+  {{
+{json_fields},
+    "person_description": "メイン人物の具体的な描写"
+  }}
+]
+```
+
+== ルール ==
+- 上記スロットに対応するテキストのみ生成する。存在しないスロットのキーは出力に含めない
+- 各テキストは指定文字数の範囲内に収めること
+- メインタイトルは記事の主題となる商品名・キーワードにする
+- メイン人物は記事のターゲット読者を想起させる人物にする
+- テキストの内容は記事の本文に基づくこと（創作しない）
+"""
+    return prompt
 
 
-def _build_mv_color_instruction(site_colors: dict | None = None) -> str:
+def _build_mv_color_instruction(site_colors: dict | None = None, minimal: bool = False) -> str:
     """サイトカラーパレットからMV用の配色指示テキストを動的生成する。
 
-    固定HEXではなく「役割」ベースで指示し、サイトカラーがあればそれを優先。
-    なければ記事テーマに合った色をAIに任せる。
+    サイトカラーを配色のベース（アンカー）として渡す。
+    参照画像が複数ありトーンがバラバラな場合でも、サイトカラーで配色を安定させる。
+
+    minimal=True の場合（参照画像あり時）:
+        テーマカラーのみ送る。accent_color等は参照画像に委ねる。
+        accent_colorを送ると参照画像のスタイルと矛盾してタイトル色が狂う原因になる。
     """
     if site_colors:
         primary = site_colors.get("primary_color", "")
-        accent = site_colors.get("accent_color", "")
-        bg = site_colors.get("background_color", "")
-        text_c = site_colors.get("text_color", "")
-        danger = site_colors.get("danger_color", "")
-        # テキスト色が真っ黒(#000000)の場合は柔らかい濃色に置き換え
-        if text_c and text_c.lower() in ("#000000", "#000", "black"):
-            text_c = "#333333"
-        lines = [
-            "以下のサイトカラーパレットを基調として配色すること（デザイン仕様書内の色指定より優先）:",
-            f"- テーマカラー（縁取り・帯の背景・強調等に使用）: {primary}" if primary else "",
-            f"- アクセントカラー（サブタイトル・強調キーワード等）: {accent or danger}" if (accent or danger) else "",
-            f"- 背景ベース色: {bg}" if bg else "",
-            f"- テキスト基本色（補足テキスト等）: {text_c}（真っ黒#000は避け、#333〜#444程度の柔らかい濃色を使うこと）" if text_c else "- テキスト基本色: 真っ黒#000は避け、#333〜#444程度の柔らかい濃色を使うこと",
-            "- デザイン仕様書内に具体的なHEXコードがある場合、それは参照画像から抽出した参考値。実際にはこのパレットの色を使うこと",
-            "- 上記カラーを「そのまま」使うのではなく、参照画像のトーンや明度バランスに合わせて微調整してよい",
-        ]
+
+        if minimal:
+            # 参照画像が主役の場合: テーマカラーだけで配色をアンカー
+            lines = [
+                "== 配色の基準 ==",
+                f"- このサイトのテーマカラー: {primary}" if primary else "",
+                "- それ以外の色は参照画像に従うこと",
+            ]
+        else:
+            accent = site_colors.get("accent_color", "")
+            bg = site_colors.get("background_color", "")
+            text_c = site_colors.get("text_color", "")
+            danger = site_colors.get("danger_color", "")
+            lines = [
+                "== 配色パレット（このサイトのブランドカラー。配色の基準として使うこと） ==",
+                f"- テーマカラー: {primary}" if primary else "",
+                f"- アクセントカラー: {accent or danger}" if (accent or danger) else "",
+                f"- 背景ベース色: {bg}" if bg else "",
+                f"- テキスト基本色: {text_c}" if text_c else "",
+                "- 上記カラーパレットのトーンに合った配色で画像全体を統一すること",
+            ]
         return "\n".join(line for line in lines if line)
     else:
         return (
-            "固定色の指定なし。記事のテーマ・雰囲気に合った配色をAIが自動判断すること。\n"
-            "ただし以下のバランスルールは厳守:\n"
-            "- 背景は淡い色（パステル系グラデーション → 白）\n"
-            "- メインタイトルは白抜き＋テーマカラーの縁取りで最も目立たせる\n"
-            "- アクセントカラーはサブタイトルや強調ワードに1色だけ使い、使いすぎない\n"
-            "- 帯は背景と十分コントラストのある色（白帯+濃色テキスト or 濃色帯+白テキスト）\n"
-            "- 補足テキストはダークグレー系（#333〜#444）で控えめに。真っ黒#000は使わない"
+            "== 配色 ==\n"
+            "固定色の指定なし。参照画像がある場合は参照画像の配色に従うこと。\n"
+            "参照画像がない場合は記事のテーマ・雰囲気に合った配色をAIが自動判断すること。"
         )
+
+
+def _get_default_style_hints() -> dict:
+    """mv_style_hintsが未設定の場合のデフォルト値（汎用的な指示）。
+
+    Trial 16: 3層アーキテクチャ版
+    構造系7変数のみ。フォント・色・装飾は参照画像に完全に委ねる。
+    style_overrides は空文字列がデフォルト（= 参照画像コピーのみ、上書きなし）。
+
+    デフォルト値は「参照画像のレイアウトを忠実にコピーする」ための汎用ガイド。
+    参照画像から人物配置・背景・テキスト関係を自動的に読み取らせる。
+    サイト固有のmv_style_hintsが設定されていればそちらが優先される。
+    """
+    return {
+        "person_position": "参照画像と同じ位置・向き・ポーズで配置する。参照画像で人物が右側なら右側、左側なら左側に配置",
+        "person_size": "参照画像と同じ大きさ・比率にする。参照画像で人物が大きければ大きく、小さければ小さく",
+        "person_crop": "参照画像で人物が画像端で切れている場合、同じように切れてよい。全身が収まっている場合は全身を描く",
+        "person_bottom": "参照画像と同じ足元の処理にする。下端で切れていれば切れてよい",
+        "text_person_layer": "参照画像と同じ前後関係にする。テキストが人物の上に重なっているなら重ねる。分離しているなら分離する",
+        "background_style": "参照画像と同じ背景スタイルを忠実に再現する。色・グラデーション・装飾パターン・カード型背景の有無をすべて参照画像からコピー",
+        "supplement_style": "参照画像の補足テキストと同じスタイル。補足テキストがなければ描画しない",
+        "style_overrides": "",  # 空 = 上書きなし。参照画像を完全コピー。
+    }
 
 
 def render_mv_generation_prompt(
@@ -582,18 +725,21 @@ def render_mv_generation_prompt(
     mv_design_analysis: str = "",
     site_colors: dict | None = None,
     mv_design_spec: str = "",
+    mv_style_hints: dict | None = None,
+    mv_slot_structure: dict | None = None,
 ) -> str:
     """MV画像案（テンプレート型）からMV生成プロンプトを組み立てる"""
 
     # 参照画像がある場合
     if has_reference_images:
+        hook_text = mv_proposal.get("hook_text", "").strip()
+        main_title = mv_proposal.get("main_title", "").strip()
+        subtitle = mv_proposal.get("subtitle", "").strip()
+        band_text = mv_proposal.get("band_text", "").strip()
+        supplement_text = mv_proposal.get("supplement_text", "").strip()
+        person_description = mv_proposal.get("person_description", "")
         text_params = dict(
-            hook_text=mv_proposal.get("hook_text", ""),
-            main_title=mv_proposal.get("main_title", ""),
-            subtitle=mv_proposal.get("subtitle", ""),
-            band_text=mv_proposal.get("band_text", ""),
-            supplement_text=mv_proposal.get("supplement_text", ""),
-            person_description=mv_proposal.get("person_description", ""),
+            person_description=person_description,
             language=language,
         )
 
@@ -603,14 +749,91 @@ def render_mv_generation_prompt(
             return MV_GENERATION_WITH_SPEC_TEMPLATE.format(
                 design_spec=mv_design_spec,
                 color_instruction=color_instruction,
+                hook_text=hook_text,
+                main_title=main_title,
+                subtitle=subtitle,
+                band_text=band_text,
+                supplement_text=supplement_text,
                 **text_params,
             )
 
-        # 手動仕様書なし → 参照画像 + 重要ポイント補強 + 配色指示
-        # ※ Gemini自動分析(mv_design_analysis)は長すぎて画像生成モデルが処理しきれないため使わない
-        color_instruction = _build_mv_color_instruction(site_colors)
+        # V2: スロット構造検出済み → 超シンプルテンプレート
+        # 参照画像に全て委ね、テキスト内容と人物だけ差し替える
+        if mv_slot_structure and "slots" in mv_slot_structure:
+            color_instruction = _build_mv_color_instruction(site_colors, minimal=True)
+            # スロット構造からテキストスロットを組み立て
+            text_lines = []
+            for slot in mv_slot_structure["slots"]:
+                role = slot["role"]
+                value = mv_proposal.get(role, "").strip()
+                if value:
+                    desc = slot.get("description", role)
+                    text_lines.append(f"- 「{value}」→ {desc}")
+            text_slots = "\n".join(text_lines)
+            # style_overrides（オプション）
+            hints = mv_style_hints if mv_style_hints else {}
+            raw_overrides = hints.get("style_overrides", "")
+            if raw_overrides:
+                style_overrides = (
+                    "\n== 参照画像の補正ルール ==\n"
+                    f"{raw_overrides}\n"
+                )
+            else:
+                style_overrides = ""
+            return MV_GENERATION_WITH_SLOT_STRUCTURE_TEMPLATE.format(
+                color_instruction=color_instruction,
+                text_slots=text_slots,
+                person_description=person_description,
+                language=language,
+                style_overrides=style_overrides,
+            )
+
+        # Trial 16: 3層アーキテクチャ（V1フォールバック）
+        #   Layer A: 参照画像（主役）
+        #   Layer B: 構造系変数（人物配置・背景パターン）
+        #   Layer C: style_overrides（オプション。参照画像で伝わらない例外ルールのみ）
+        defaults = _get_default_style_hints()
+        hints = mv_style_hints if mv_style_hints else defaults
+        # 参照画像が主役 → カラーパレットは最小限（テーマカラーのみ）
+        # accent_color等を送ると参照画像と矛盾してタイトル色が狂う
+        color_instruction = _build_mv_color_instruction(site_colors, minimal=True)
+
+        # style_overrides: 空なら注入しない。値があれば「上書きルール」として追加
+        raw_overrides = hints.get("style_overrides", defaults["style_overrides"])
+        if raw_overrides:
+            style_overrides = (
+                "\n== 参照画像の補正ルール（以下は参照画像のコピーに上書きする例外ルール） ==\n"
+                f"{raw_overrides}\n"
+            )
+        else:
+            style_overrides = ""
+
+        # テキストスロットを動的組み立て: 空のスロットはプロンプトに含めない
+        # 装飾指示は全て「参照画像と同じ」に委ねる（サイト固有の装飾ワードを混在させない）
+        supplement_style = hints.get("supplement_style", defaults["supplement_style"])
+        text_lines = []
+        if hook_text:
+            text_lines.append(f"- 「{hook_text}」→ 参照画像の煽りテキストと同じ位置・サイズ・色・装飾で描画")
+        if main_title:
+            text_lines.append(f"- 「{main_title}」→ 参照画像のメインタイトルと同じ位置・サイズ・色・太さ・装飾で描画（最も大きい文字）")
+        if subtitle:
+            text_lines.append(f"- 「{subtitle}」→ 参照画像のサブタイトルと同じ位置・サイズ・色・装飾で描画")
+        if band_text:
+            text_lines.append(f"- 「{band_text}」→ 参照画像の帯テキストと同じスタイルの帯/ボックス内に描画（帯の色・角丸・影も同じに）")
+        if supplement_text:
+            text_lines.append(f"- 「{supplement_text}」→ {supplement_style}")
+        text_slots = "\n".join(text_lines)
+
         return MV_GENERATION_WITH_REF_TEMPLATE.format(
             color_instruction=color_instruction,
+            person_position=hints.get("person_position", defaults["person_position"]),
+            person_size=hints.get("person_size", defaults["person_size"]),
+            person_crop=hints.get("person_crop", defaults["person_crop"]),
+            person_bottom=hints.get("person_bottom", defaults["person_bottom"]),
+            text_person_layer=hints.get("text_person_layer", defaults["text_person_layer"]),
+            background_style=hints.get("background_style", defaults["background_style"]),
+            style_overrides=style_overrides,
+            text_slots=text_slots,
             **text_params,
         )
 

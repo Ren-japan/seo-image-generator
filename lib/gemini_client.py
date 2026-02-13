@@ -43,6 +43,23 @@ class GeminiClient:
         )
         return response.text
 
+    def analyze_with_images(
+        self,
+        prompt: str,
+        images: list[Image.Image],
+        model: str = MODEL_ANALYSIS,
+    ) -> str:
+        """画像付きテキスト分析（参照画像の構造分析等）。テキスト応答のみ返す。"""
+        contents: list = []
+        for img in images:
+            contents.append(img)
+        contents.append(prompt)
+        response = self.client.models.generate_content(
+            model=model,
+            contents=contents,
+        )
+        return response.text
+
     def generate_image(
         self,
         prompt: str,

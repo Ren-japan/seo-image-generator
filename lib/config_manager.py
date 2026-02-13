@@ -288,3 +288,89 @@ class ConfigManager:
             contents=contents,
         )
         return response.text if response.text else ""
+
+    def analyze_mv_slot_structure(self, site_name: str, gemini_client) -> dict:
+        """MV参照画像からテキストスロット構造をGemini Flashで自動検出しJSONで返す。
+
+        Returns:
+            {
+                "slots": [
+                    {"role": "hook"|"main_title"|"subtitle"|"band_text"|"supplement_text",
+                     "description": "スタイルの短い説明"},
+                    ...
+                ],
+                "absent_slots": ["subtitle", "supplement_text"],
+                "person_style": "背景込み実写 / 切り抜き写真 / イラスト等",
+                "background_summary": "背景の構造を短く説明"
+            }
+        """
+        import json as _json
+
+        images = self.get_reference_pil_images(site_name, category="mv")
+        if not images:
+            return {}
+
+        prompt = """以下のMV（メインビジュアル/アイキャッチ）参照画像を分析し、テキストスロットの構造をJSON形式で抽出してください。
+
+== 分析ルール ==
+1. 画像内に存在するテキスト要素を**上から順に**全て列挙する
+2. 各テキスト要素の役割を以下の5種類のいずれかに分類する:
+   - hook: 煽りテキスト（短いフレーズ。ピル/バッジの中にある場合もプレーンテキストの場合もある）
+   - main_title: メインタイトル（最も大きいテキスト）
+   - subtitle: サブタイトル（メインタイトルの補足的なテキスト）
+   - band_text: 帯テキスト（色付きの帯やボックス内のテキスト）
+   - supplement_text: 補足テキスト（下部の小さいテキスト）
+3. 各要素のスタイルを簡潔に記述する（色、太さ、装飾、背景の有無）
+4. **5枚全てに共通する要素だけ**を抽出する。1枚だけにある要素は無視する
+5. 5枚のどれにも存在しないスロットは absent_slots に列挙する
+6. 人物のスタイル（切り抜き/背景込み写真/イラスト）を判定する
+7. 背景の構造を簡潔に記述する
+
+== 特に注意 ==
+- 各roleは最大1つ。改行でテキストが2行になっていても1つのスロットとして扱う（main_titleが複数行でも1エントリ）
+- テキストが帯/ピル/バッジの中にあるか、プレーンテキストかを正確に判定する
+- 文字の縁取り（outline）の有無を正確に判定する
+- 文字色を正確に判定する（白/黒/テーマカラー/赤等）
+- ロゴやアイコンはテキストスロットに含めない
+
+== 出力形式（JSON） ==
+```json
+{
+  "slots": [
+    {"role": "hook", "description": "スタイルの短い説明（位置・色・太さ・装飾）"},
+    {"role": "band_text", "description": "..."},
+    {"role": "main_title", "description": "..."}
+  ],
+  "absent_slots": ["subtitle", "supplement_text"],
+  "person_style": "背景込み実写（切り抜きではない）",
+  "background_summary": "左に白い直角カード（薄い影）、右に人物の背景ボケ写真"
+}
+```
+
+slotsは画像内の上から順に記載すること。JSON以外のテキストは出力しないこと。"""
+
+        response_text = gemini_client.analyze_with_images(prompt, images)
+
+        # JSONを抽出してパース
+        try:
+            import re
+            json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", response_text, re.DOTALL)
+            if json_match:
+                result = _json.loads(json_match.group(1))
+            else:
+                result = _json.loads(response_text)
+
+            # 後処理: 同じroleの重複を除去（最初の1つを残す）
+            if "slots" in result:
+                seen_roles = set()
+                deduped = []
+                for s in result["slots"]:
+                    role = s.get("role", "")
+                    if role not in seen_roles:
+                        seen_roles.add(role)
+                        deduped.append(s)
+                result["slots"] = deduped
+
+            return result
+        except (_json.JSONDecodeError, AttributeError):
+            return {}

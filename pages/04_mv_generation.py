@@ -59,6 +59,12 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
     # MVデザイン仕様書（手動。Gemini分析より優先）
     mv_design_spec = config.get("mv_design_spec", "")
 
+    # サイト別MVスタイル補強ヒント（person_layout / background_style / supplement_style）
+    mv_style_hints = config.get("mv_style_hints", None)
+
+    # MVスロット構造（検出済みの場合。V2テンプレートパスを使用）
+    mv_slot_structure = config.get("mv_slot_structure", None)
+
     # MV生成プロンプト
     gen_prompt = render_mv_generation_prompt(
         design_system=design_system,
@@ -69,6 +75,8 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
         mv_design_analysis=mv_design_analysis,
         site_colors=site_colors,
         mv_design_spec=mv_design_spec,
+        mv_style_hints=mv_style_hints,
+        mv_slot_structure=mv_slot_structure,
     )
 
     # Gemini API呼び出し
@@ -91,6 +99,7 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
             "image": gen_image,
             "processed_image": None,
             "response_text": gen_text,
+            "generation_prompt": gen_prompt,
             "timestamp": datetime.datetime.now().isoformat(),
         }
         if existing:
@@ -116,17 +125,33 @@ def refine_mv_image(entry_index, refinement_text, config, site_name=None):
     if site_name:
         mv_ref_images = cm.get_reference_pil_images(site_name, category="mv")
 
-    # contents組み立て: 参照画像 → 現在の画像 → 修正指示
+    # contents組み立て: 参照画像 → 生成済み画像（修正対象） → 元プロンプト+修正指示
     contents = []
+
+    # 1. 参照画像（スタイルの基準）
     if mv_ref_images:
         for ref_img in mv_ref_images:
             contents.append(ref_img)
+
+    # 2. 生成済み画像（修正対象として明示）
     contents.append(current_img)
-    contents.append(
-        "上記の画像を以下の指示に従って微修正してください。"
-        "レイアウト構造・テキスト装飾スタイル・配色は変更せず、指示された部分のみを修正してください。\n\n"
-        f"【修正指示】\n{refinement_text}"
-    )
+
+    # 3. 元の生成プロンプト + 修正指示
+    original_prompt = entry.get("generation_prompt", "")
+    if original_prompt:
+        contents.append(
+            f"上記の最後の1枚は、以下のプロンプトで生成した画像です。\n\n"
+            f"--- 元のプロンプト ---\n{original_prompt}\n--- ここまで ---\n\n"
+            f"この画像を以下の点だけ修正してください。それ以外のレイアウト・テキスト内容・配色・装飾はすべて維持すること。\n\n"
+            f"【修正指示】\n{refinement_text}"
+        )
+    else:
+        # フォールバック（generation_prompt未保存の古いエントリ）
+        contents.append(
+            "上記の最後の1枚を以下の指示に従って微修正してください。"
+            "レイアウト構造・テキスト内容・テキスト装飾スタイル・配色は変更せず、指示された部分のみを修正してください。\n\n"
+            f"【修正指示】\n{refinement_text}"
+        )
 
     response = gemini.client.models.generate_content(
         model="gemini-3-pro-image-preview",
@@ -180,8 +205,11 @@ if mv_ref_count > 0:
 else:
     st.warning("MV参照画像が未登録です。「サイト設定」→「参照画像」→「MV用」タブから登録すると、スタイルが安定します。")
 
-# デザイン仕様書の有無を表示
-if config.get("mv_design_spec", "").strip():
+# スロット構造の有無を表示
+if config.get("mv_slot_structure"):
+    slot_roles = [s["role"] for s in config["mv_slot_structure"].get("slots", [])]
+    st.success(f"MVスロット構造: 検出済み（{', '.join(slot_roles)}）→ V2テンプレートで生成")
+elif config.get("mv_design_spec", "").strip():
     st.success("MVデザイン仕様書: 登録済み（生成時に使用されます）")
 else:
     st.info("MVデザイン仕様書: 未登録（参照画像のみで生成します）")
@@ -236,7 +264,11 @@ if btn_auto and article_title.strip():
         try:
             st.write("記事の主題を分析し、MVテキスト案を設計中...")
             gemini = GeminiClient(api_key=st.session_state.api_key)
-            mv_proposals = propose_mv_images(article_title, article_text, gemini)
+            mv_slot_structure = config.get("mv_slot_structure", None)
+            mv_proposals = propose_mv_images(
+                article_title, article_text, gemini,
+                mv_slot_structure=mv_slot_structure,
+            )
 
             if mv_proposals:
                 st.session_state.mv_proposals = mv_proposals
@@ -250,15 +282,20 @@ if btn_auto and article_title.strip():
             st.error(f"エラー: {e}")
 
 if btn_manual:
-    # 空のテンプレートを1つ追加
-    empty_proposal = {
-        "hook_text": "",
-        "main_title": "",
-        "subtitle": "",
-        "band_text": "",
-        "supplement_text": "",
-        "person_description": "",
-    }
+    # 空のテンプレートを1つ追加（スロット構造がある場合はそのスロットのみ）
+    mv_slot_structure = config.get("mv_slot_structure", None)
+    empty_proposal = {"person_description": ""}
+    if mv_slot_structure and "slots" in mv_slot_structure:
+        for s in mv_slot_structure["slots"]:
+            empty_proposal[s["role"]] = ""
+    else:
+        empty_proposal.update({
+            "hook_text": "",
+            "main_title": "",
+            "subtitle": "",
+            "band_text": "",
+            "supplement_text": "",
+        })
     st.session_state.mv_proposals = [empty_proposal]
     st.session_state.mv_selected_proposals = [True]
 
@@ -271,9 +308,25 @@ if st.session_state.mv_proposals:
 
     st.subheader("Step 3: MVテキスト内容を確認・編集")
 
-    # テンプレートのレイアウト説明
-    with st.expander("MVテンプレートの構造", expanded=False):
-        st.code("""
+    # スロット構造情報
+    mv_slot_structure = config.get("mv_slot_structure", None)
+    active_roles = None  # None = 全スロット表示（従来互換）
+    if mv_slot_structure and "slots" in mv_slot_structure:
+        active_roles = [s["role"] for s in mv_slot_structure["slots"]]
+        absent = mv_slot_structure.get("absent_slots", [])
+        with st.expander("検出されたMVスロット構造", expanded=False):
+            for s in mv_slot_structure["slots"]:
+                st.markdown(f"- **{s['role']}**: {s.get('description', '')}")
+            if absent:
+                st.caption(f"存在しないスロット: {', '.join(absent)}")
+            if mv_slot_structure.get("person_style"):
+                st.caption(f"人物スタイル: {mv_slot_structure['person_style']}")
+            if mv_slot_structure.get("background_summary"):
+                st.caption(f"背景: {mv_slot_structure['background_summary']}")
+    else:
+        # 従来のテンプレート構造説明
+        with st.expander("MVテンプレートの構造", expanded=False):
+            st.code("""
 ┌─────────────────────────────────────┐
 │ [煽りテキスト]（左上・小さめ）        │
 │                                     │
@@ -287,11 +340,22 @@ if st.session_state.mv_proposals:
 │ [補足テキスト]（左下）                │
 └─────────────────────────────────────┘
 背景: 上部カラーグラデーション → 下部ホワイト
-        """, language="text")
+            """, language="text")
+
+    # スロット入力UIの設定
+    # V2 slot structure uses "hook", V1 uses "hook_text" — 両方対応
+    slot_ui_config = {
+        "hook_text": {"label": "煽りテキスト（5〜10文字）", "placeholder": "例: 今話題の, 〇〇で人気"},
+        "hook": {"label": "煽りテキスト（5〜10文字）", "placeholder": "例: 今話題の, 〇〇で人気"},
+        "main_title": {"label": "メインタイトル（2〜15文字）", "placeholder": "例: リライブシャツ, 看護師ボーナス"},
+        "subtitle": {"label": "サブタイトル（8〜15文字）", "placeholder": "例: 本当に効果はある？"},
+        "band_text": {"label": "帯テキスト（10〜20文字）", "placeholder": "例: リアルな口コミを調査！"},
+        "supplement_text": {"label": "補足テキスト（15〜25文字）", "placeholder": "例: 期待できる効果や安く買う方法まで紹介"},
+    }
 
     for i, mv_proposal in enumerate(mv_proposals):
         mv_selected[i] = st.checkbox(
-            f"MV案{i+1}: {mv_proposal.get('main_title', '未設定')} - {mv_proposal.get('subtitle', '')}",
+            f"MV案{i+1}: {mv_proposal.get('main_title', '未設定')}",
             value=mv_selected[i],
             key=f"mv_select_{i}",
         )
@@ -301,22 +365,17 @@ if st.session_state.mv_proposals:
             st.markdown("**現在のテキスト内容:**")
             preview_col1, preview_col2 = st.columns([2, 1])
             with preview_col1:
-                hook = mv_proposal.get("hook_text", "")
-                main = mv_proposal.get("main_title", "")
-                sub = mv_proposal.get("subtitle", "")
-                band = mv_proposal.get("band_text", "")
-                supp = mv_proposal.get("supplement_text", "")
-
-                if hook:
-                    st.markdown(f"*{hook}*")
-                if main:
-                    st.markdown(f"### {main}")
-                if sub:
-                    st.markdown(f"**:red[{sub}]**")
-                if band:
-                    st.info(band)
-                if supp:
-                    st.caption(supp)
+                for role in (active_roles or ["hook_text", "main_title", "subtitle", "band_text", "supplement_text"]):
+                    val = mv_proposal.get(role, "")
+                    if val:
+                        if role == "main_title":
+                            st.markdown(f"### {val}")
+                        elif role == "band_text":
+                            st.info(val)
+                        elif role == "supplement_text":
+                            st.caption(val)
+                        else:
+                            st.markdown(f"*{val}*")
 
             with preview_col2:
                 person = mv_proposal.get("person_description", "")
@@ -326,50 +385,20 @@ if st.session_state.mv_proposals:
             st.divider()
             st.markdown("**各スロットを編集:**")
 
-            # 煽りテキスト + メインタイトル
-            edit_c1, edit_c2 = st.columns(2)
-            with edit_c1:
-                mv_proposal["hook_text"] = st.text_input(
-                    "煽りテキスト（5〜10文字）",
-                    value=mv_proposal.get("hook_text", ""),
-                    placeholder="例: 今話題の, 〇〇で人気",
-                    key=f"mv_hook_{i}",
-                )
-            with edit_c2:
-                mv_proposal["main_title"] = st.text_input(
-                    "メインタイトル（2〜8文字）",
-                    value=mv_proposal.get("main_title", ""),
-                    placeholder="例: リライブシャツ, BAKUNE",
-                    key=f"mv_main_{i}",
+            # 動的スロットUI: active_rolesがある場合はそのスロットのみ表示
+            display_roles = active_roles or ["hook_text", "main_title", "subtitle", "band_text", "supplement_text"]
+            for role in display_roles:
+                ui_conf = slot_ui_config.get(role, {"label": role, "placeholder": ""})
+                mv_proposal[role] = st.text_input(
+                    ui_conf["label"],
+                    value=mv_proposal.get(role, ""),
+                    placeholder=ui_conf["placeholder"],
+                    key=f"mv_{role}_{i}",
                 )
 
-            # サブタイトル
-            mv_proposal["subtitle"] = st.text_input(
-                "サブタイトル（8〜15文字・赤文字で表示）",
-                value=mv_proposal.get("subtitle", ""),
-                placeholder="例: 本当に効果はある？, 口コミ・評判を調査！",
-                key=f"mv_sub_{i}",
-            )
-
-            # 帯テキスト
-            mv_proposal["band_text"] = st.text_input(
-                "帯テキスト（10〜20文字・青帯の上に白文字）",
-                value=mv_proposal.get("band_text", ""),
-                placeholder="例: リアルな口コミを調査！",
-                key=f"mv_band_{i}",
-            )
-
-            # 補足テキスト
-            mv_proposal["supplement_text"] = st.text_input(
-                "補足テキスト（15〜25文字）",
-                value=mv_proposal.get("supplement_text", ""),
-                placeholder="例: 期待できる効果や安く買う方法まで紹介",
-                key=f"mv_supp_{i}",
-            )
-
-            # メイン人物
+            # メイン人物（常に表示）
             mv_proposal["person_description"] = st.text_area(
-                "メイン人物の説明（右下に大きく配置される人物）",
+                "メイン人物の説明",
                 value=mv_proposal.get("person_description", ""),
                 placeholder="例: スマホで口コミを見ている若い女性、リラックスした表情",
                 height=80,
@@ -411,8 +440,8 @@ if st.session_state.mv_proposals:
     for i, mv_proposal in enumerate(mv_proposals):
         with single_cols[i % 3]:
             title = mv_proposal.get("main_title", "")
-            subtitle = mv_proposal.get("subtitle", "")
-            # タイトルとサブタイトルで区別がつくラベルを作る
+            subtitle = mv_proposal.get("subtitle", "") or mv_proposal.get("band_text", "")
+            # タイトルとサブタイトル/帯テキストで区別がつくラベルを作る
             short_label = subtitle[:12] if subtitle else title[:12]
             single_btns[i] = st.button(
                 f"案{i+1}: {short_label}",

@@ -303,10 +303,83 @@ with tab_edit:
                         except Exception:
                             st.warning(f"読込失敗: {rk}")
 
-                # 再分析ボタン
-                if st.button(f"🔍 {cat_label}の参照画像を再分析", key=f"btn_reanalyze_ref_{ref_category}"):
-                    config = run_ref_image_analysis(cm, site_name, config, category=ref_category)
-                    st.rerun()
+                # 再分析ボタン + スロット構造検出（MV用のみ）
+                if ref_category == "mv":
+                    btn_col1, btn_col2 = st.columns(2)
+                    with btn_col1:
+                        if st.button(f"🔍 {cat_label}の参照画像を再分析", key=f"btn_reanalyze_ref_{ref_category}"):
+                            config = run_ref_image_analysis(cm, site_name, config, category=ref_category)
+                            st.rerun()
+                    with btn_col2:
+                        if st.button("🔲 スロット構造を検出", key="btn_detect_slot_structure"):
+                            _slot_detect_success = False
+                            with st.spinner("参照画像からスロット構造を検出中..."):
+                                try:
+                                    # APIキー: まず環境変数、次にsession_state
+                                    from lib.gemini_client import GeminiClient
+                                    _api_key = os.environ.get("GEMINI_API_KEY", "") or st.session_state.get("api_key", "")
+                                    if not _api_key:
+                                        st.error("GEMINI_API_KEYが設定されていません。サイドバーからAPIキーを入力してください。")
+                                    else:
+                                        gemini = GeminiClient(api_key=_api_key)
+                                        slot_structure = cm.analyze_mv_slot_structure(site_name, gemini)
+                                        if slot_structure and "slots" in slot_structure:
+                                            config["mv_slot_structure"] = slot_structure
+                                            cm.save(site_name, config)
+                                            st.session_state.site_config = config
+                                            st.success(f"スロット構造を検出: {len(slot_structure['slots'])}スロット")
+                                            _slot_detect_success = True
+                                        else:
+                                            st.error("スロット構造の検出に失敗しました。")
+                                except Exception as e:
+                                    import traceback
+                                    st.error(f"検出エラー: {e}")
+                                    st.code(traceback.format_exc())
+                            if _slot_detect_success:
+                                st.rerun()
+
+                    # スロット構造の表示・編集
+                    if config.get("mv_slot_structure"):
+                        with st.expander("検出済みスロット構造", expanded=False):
+                            slot_struct = config["mv_slot_structure"]
+                            for s in slot_struct.get("slots", []):
+                                st.markdown(f"- **{s['role']}**: {s.get('description', '')}")
+                            absent = slot_struct.get("absent_slots", [])
+                            if absent:
+                                st.caption(f"不在スロット: {', '.join(absent)}")
+                            if slot_struct.get("person_style"):
+                                st.caption(f"人物: {slot_struct['person_style']}")
+                            if slot_struct.get("background_summary"):
+                                st.caption(f"背景: {slot_struct['background_summary']}")
+
+                            # JSON編集
+                            import json as _json
+                            edited_json = st.text_area(
+                                "JSON編集（手動修正）",
+                                value=_json.dumps(slot_struct, ensure_ascii=False, indent=2),
+                                height=200,
+                                key="edit_slot_structure",
+                            )
+                            if st.button("スロット構造を保存", key="save_slot_structure"):
+                                try:
+                                    config["mv_slot_structure"] = _json.loads(edited_json)
+                                    cm.save(site_name, config)
+                                    st.session_state.site_config = config
+                                    st.success("保存しました")
+                                    st.rerun()
+                                except _json.JSONDecodeError:
+                                    st.error("JSONの形式が不正です")
+
+                            if st.button("スロット構造をクリア", key="clear_slot_structure"):
+                                if "mv_slot_structure" in config:
+                                    del config["mv_slot_structure"]
+                                    cm.save(site_name, config)
+                                    st.session_state.site_config = config
+                                    st.rerun()
+                else:
+                    if st.button(f"🔍 {cat_label}の参照画像を再分析", key=f"btn_reanalyze_ref_{ref_category}"):
+                        config = run_ref_image_analysis(cm, site_name, config, category=ref_category)
+                        st.rerun()
 
             else:
                 st.info(f"{cat_label}の参照画像がまだ登録されていません。")
@@ -413,9 +486,22 @@ with tab_edit:
             st.success("設定を保存しました。")
 
     with delete_col:
-        if st.button("このサイトを削除", type="secondary", key="btn_delete_site", use_container_width=True):
-            cm.delete(site_name)
-            st.session_state.current_site = None
-            st.session_state.site_config = {}
-            st.warning(f"「{site_name}」を削除しました。")
-            st.rerun()
+        if st.button("🗑️ このサイトを削除", type="secondary", key="btn_delete_site", use_container_width=True):
+            st.session_state.confirm_delete_site = True
+
+    # 削除確認ダイアログ
+    if st.session_state.get("confirm_delete_site"):
+        st.warning(f"⚠️ 「{site_name}」を本当に削除しますか？参照画像や設定も全て削除されます。")
+        confirm_col1, confirm_col2 = st.columns(2)
+        with confirm_col1:
+            if st.button("はい、削除する", type="primary", key="btn_confirm_delete"):
+                cm.delete(site_name)
+                st.session_state.current_site = None
+                st.session_state.site_config = {}
+                st.session_state.confirm_delete_site = False
+                st.warning(f"「{site_name}」を削除しました。")
+                st.rerun()
+        with confirm_col2:
+            if st.button("キャンセル", key="btn_cancel_delete"):
+                st.session_state.confirm_delete_site = False
+                st.rerun()

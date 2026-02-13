@@ -88,25 +88,17 @@ def propose_mv_images(
     article_title: str,
     article_text: str,
     gemini: GeminiClient,
+    mv_slot_structure: dict | None = None,
 ) -> list[dict]:
     """
     記事タイトルと本文からMV画像案を1-3個生成する。
 
-    Returns:
-        [
-          {
-            "concept": "...",
-            "scene_description": "...",
-            "composition_type": "中央配置型|左右分割型|シーン描写型|アイコン散りばめ型",
-            "text_area": "上部|下部|左|右",
-            "mood": "...",
-            "main_elements": ["...", "..."],
-            "background_description": "..."
-          },
-          ...
-        ]
+    mv_slot_structure がある場合、検出されたスロットのみ生成させる。
     """
-    prompt = render_mv_proposal_prompt(article_title, article_text)
+    prompt = render_mv_proposal_prompt(
+        article_title, article_text,
+        mv_slot_structure=mv_slot_structure,
+    )
     response_text = gemini.analyze_text(prompt)
 
     proposals = _parse_proposals(response_text)
