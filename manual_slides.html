@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO画像生成ツール 操作マニュアル</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #0f172a; color: #334155; }
+
+  /* Slide system */
+  .slide {
+    width: 960px; min-height: 540px; margin: 40px auto; background: #fff;
+    border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); padding: 48px 56px;
+    position: relative; overflow: hidden; page-break-after: always;
+  }
+  .slide::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, #3B82F6, #2563EB, #1D4ED8);
+  }
+  .slide-number {
+    position: absolute; bottom: 20px; right: 32px; font-size: 13px; color: #94a3b8;
+  }
+  .slide-logo {
+    position: absolute; bottom: 20px; left: 32px; font-size: 11px; color: #94a3b8; letter-spacing: 0.5px;
+  }
+
+  /* Title slide */
+  .title-slide { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 540px; text-align: center; }
+  .title-slide h1 { font-size: 36px; font-weight: 800; color: #1e293b; margin-bottom: 12px; }
+  .title-slide .subtitle { font-size: 18px; color: #64748b; margin-bottom: 40px; }
+  .title-slide .url { font-size: 14px; color: #3B82F6; background: #eff6ff; padding: 8px 20px; border-radius: 20px; }
+  .title-slide .badge { display: inline-block; background: #3B82F6; color: #fff; font-size: 13px; font-weight: 600; padding: 4px 14px; border-radius: 16px; margin-bottom: 20px; }
+
+  /* Section headers */
+  h2 { font-size: 28px; font-weight: 700; color: #1e293b; margin-bottom: 24px; }
+  h2 .step-badge { display: inline-block; background: #3B82F6; color: #fff; font-size: 14px; font-weight: 700; padding: 3px 12px; border-radius: 12px; margin-right: 8px; vertical-align: middle; }
+  h3 { font-size: 18px; font-weight: 600; color: #475569; margin-bottom: 12px; }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 32px 0; }
+  .flow-step {
+    background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 12px;
+    padding: 14px 18px; text-align: center; flex: 1; transition: all 0.2s;
+  }
+  .flow-step .num { display: block; font-size: 22px; font-weight: 800; color: #3B82F6; }
+  .flow-step .label { display: block; font-size: 13px; color: #475569; margin-top: 4px; font-weight: 500; }
+  .flow-arrow { color: #cbd5e1; font-size: 20px; flex-shrink: 0; }
+
+  /* UI Mockup */
+  .mockup {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 20px 24px; margin: 16px 0; position: relative;
+  }
+  .mockup-header {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 14px;
+  }
+  .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .mockup-dot.r { background: #ef4444; } .mockup-dot.y { background: #eab308; } .mockup-dot.g { background: #22c55e; }
+  .mockup-bar { flex: 1; background: #e2e8f0; height: 24px; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: #94a3b8; }
+
+  .mock-sidebar {
+    width: 180px; background: #fff; border-right: 1px solid #e2e8f0;
+    padding: 12px; border-radius: 8px 0 0 8px; float: left; min-height: 200px;
+  }
+  .mock-nav-item {
+    padding: 6px 10px; border-radius: 6px; font-size: 12px; margin-bottom: 3px; cursor: default;
+  }
+  .mock-nav-item.active { background: #3B82F6; color: #fff; font-weight: 600; }
+  .mock-nav-item:not(.active) { color: #64748b; }
+  .mock-nav-label { font-size: 10px; color: #94a3b8; font-weight: 600; margin: 8px 0 4px 4px; text-transform: uppercase; }
+  .mock-main { margin-left: 196px; }
+
+  .mock-input {
+    width: 100%; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 8px 12px; font-size: 12px; color: #9ca3af; margin-bottom: 8px;
+  }
+  .mock-textarea {
+    width: 100%; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; color: #9ca3af; min-height: 60px; margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .mock-btn {
+    display: inline-block; background: #3B82F6; color: #fff; font-size: 12px;
+    font-weight: 600; padding: 7px 18px; border-radius: 6px;
+  }
+  .mock-btn.disabled { background: #cbd5e1; color: #94a3b8; }
+  .mock-btn.secondary { background: #fff; color: #3B82F6; border: 1px solid #3B82F6; }
+  .mock-label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+
+  /* Annotation */
+  .annotation {
+    position: absolute; background: #ef4444; color: #fff; font-size: 11px; font-weight: 700;
+    padding: 3px 10px; border-radius: 12px; white-space: nowrap; z-index: 10;
+    box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+  }
+  .annotation::after {
+    content: ''; position: absolute; border: 6px solid transparent;
+  }
+  .annotation.arrow-down::after { border-top-color: #ef4444; bottom: -11px; left: 50%; transform: translateX(-50%); }
+  .annotation.arrow-left::after { border-right-color: #ef4444; left: -11px; top: 50%; transform: translateY(-50%); }
+  .annotation.arrow-right::after { border-left-color: #ef4444; right: -11px; top: 50%; transform: translateY(-50%); }
+
+  /* Highlight box */
+  .highlight-box {
+    border: 2px dashed #ef4444; border-radius: 8px; padding: 2px;
+    position: relative;
+  }
+
+  /* Cards */
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .card {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 20px; position: relative;
+  }
+  .card-icon { font-size: 28px; margin-bottom: 8px; }
+  .card h4 { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 6px; }
+  .card p { font-size: 13px; color: #64748b; line-height: 1.6; }
+
+  /* Feature list */
+  .feature-list { list-style: none; margin: 16px 0; }
+  .feature-list li {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #475569; line-height: 1.6;
+  }
+  .feature-list li:last-child { border-bottom: none; }
+  .feature-list .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Color dots */
+  .color-dots { display: flex; gap: 6px; margin: 8px 0; }
+  .color-dot { width: 24px; height: 24px; border-radius: 6px; border: 1px solid #e2e8f0; }
+
+  /* Proposal cards */
+  .proposal-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;
+  }
+  .proposal-check { width: 16px; height: 16px; border: 2px solid #3B82F6; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .proposal-check.checked { background: #3B82F6; }
+  .proposal-check.checked::after { content: '\2713'; color: #fff; font-size: 10px; }
+  .proposal-type { font-size: 11px; background: #eff6ff; color: #3B82F6; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+
+  /* Image result mock */
+  .result-mock {
+    display: flex; gap: 16px; margin: 16px 0;
+  }
+  .result-image {
+    flex: 2; background: linear-gradient(135deg, #dbeafe, #bfdbfe, #93c5fd);
+    border-radius: 10px; min-height: 140px; display: flex; align-items: center;
+    justify-content: center; color: #3b82f6; font-size: 14px; font-weight: 600;
+    border: 1px solid #bfdbfe;
+  }
+  .result-actions { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+
+  /* Tips */
+  .tip {
+    background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 16px;
+    border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #92400e; line-height: 1.6;
+  }
+  .tip strong { color: #78350f; }
+
+  /* Two column */
+  .two-col { display: flex; gap: 24px; }
+  .two-col > * { flex: 1; }
+
+  /* Comparison table */
+  .step-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .step-table th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-size: 13px; font-weight: 600; color: #475569; }
+  .step-table td { padding: 10px 14px; font-size: 13px; color: #64748b; border-bottom: 1px solid #f1f5f9; vertical-align: top; line-height: 1.5; }
+
+  @media print {
+    body { background: #fff; margin: 0; padding: 0; }
+    .slide {
+      box-shadow: none; margin: 0; border: none; border-radius: 0;
+      width: 100%; height: 100vh; min-height: unset;
+      page-break-after: always; page-break-inside: avoid;
+      padding: 40px 48px;
+    }
+    .slide::before { display: none; }
+    .slide:last-child { page-break-after: auto; }
+    .annotation { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .mock-btn, .step-badge, .badge, .proposal-check.checked, .tip, .flow-step,
+    .color-dot, .result-image, .card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  @page {
+    size: 960px 540px;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ====== Slide 1: Title ====== -->
+<div class="slide">
+  <div class="title-slide">
+    <div class="badge">社内ツール</div>
+    <h1>SEO記事画像 自動生成ツール</h1>
+    <p class="subtitle">記事を貼るだけで、最適な画像をAIが自動提案・生成</p>
+    <div class="url">https://seo-image-generator.streamlit.app/</div>
+  </div>
+  <div class="slide-number">1 / 11</div>
+</div>
+
+<!-- ====== Slide 2: Overview ====== -->
+<div class="slide">
+  <h2>このツールでできること</h2>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">📝</div>
+      <h4>記事を貼るだけ</h4>
+      <p>記事本文を貼り付けるだけで、AIが見出し構造を解析し、最適な画像を自動提案</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎨</div>
+      <h4>サイト別デザイン</h4>
+      <p>サイトごとに配色・スタイルを登録済み。選ぶだけでブランドに合った画像を生成</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">✏️</div>
+      <h4>微修正もカンタン</h4>
+      <p>「背景を薄く」「文字を大きく」など、テキスト指示で何度でも修正可能</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📦</div>
+      <h4>一括ダウンロード</h4>
+      <p>生成した画像はPNG個別 or ZIP一括でダウンロード。トリミング・リサイズも対応</p>
+    </div>
+  </div>
+  <div class="slide-number">2 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 3: Flow ====== -->
+<div class="slide">
+  <h2>画像ができるまでの流れ</h2>
+  <div style="margin-bottom: 8px;">
+    <div style="font-size: 11px; font-weight: 600; color: #f59e0b; margin-bottom: 6px;">&#9632; 初回のみ（サイトごとに1回）</div>
+    <div class="flow" style="margin: 0 0 4px 0;">
+      <div class="flow-step" style="background: #fffbeb; border-color: #fde68a;">
+        <span class="num" style="font-size: 18px;">0-1</span>
+        <span class="label">カラーパレット抽出</span>
+      </div>
+      <span class="flow-arrow">&#9654;</span>
+      <div class="flow-step" style="background: #fffbeb; border-color: #fde68a;">
+        <span class="num" style="font-size: 18px;">0-2</span>
+        <span class="label">参照画像を登録</span>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size: 11px; font-weight: 600; color: #3B82F6; margin-bottom: 6px;">&#9632; 毎回の操作</div>
+    <div class="flow" style="margin: 0;">
+      <div class="flow-step">
+        <span class="num" style="font-size: 18px;">1</span>
+        <span class="label">サイトを選ぶ</span>
+      </div>
+      <span class="flow-arrow">&#9654;</span>
+      <div class="flow-step">
+        <span class="num" style="font-size: 18px;">2</span>
+        <span class="label">記事を貼る</span>
+      </div>
+      <span class="flow-arrow">&#9654;</span>
+      <div class="flow-step">
+        <span class="num" style="font-size: 18px;">3</span>
+        <span class="label">AIが画像案を提案</span>
+      </div>
+      <span class="flow-arrow">&#9654;</span>
+      <div class="flow-step">
+        <span class="num" style="font-size: 18px;">4</span>
+        <span class="label">案を選んで生成</span>
+      </div>
+      <span class="flow-arrow">&#9654;</span>
+      <div class="flow-step">
+        <span class="num" style="font-size: 18px;">5</span>
+        <span class="label">ダウンロード</span>
+      </div>
+    </div>
+  </div>
+  <div class="tip" style="margin-top: 16px;">
+    <strong>所要時間の目安:</strong> 初回セットアップ 約5分 ／ 毎回の画像生成 約3〜5分
+  </div>
+  <div style="margin-top: 16px;">
+    <h3>従来との比較</h3>
+    <table class="step-table">
+      <tr><th></th><th>従来のフロー</th><th>このツール</th></tr>
+      <tr><td style="font-weight:600;">画像の企画</td><td>記事を読んで手動で考える</td><td>AIが記事を分析して自動提案</td></tr>
+      <tr><td style="font-weight:600;">デザイン作成</td><td>デザイナーに依頼 or 自作</td><td>ボタン1つでAIが生成</td></tr>
+      <tr><td style="font-weight:600;">修正</td><td>修正依頼→待ち→確認</td><td>テキスト指示で即時再生成</td></tr>
+      <tr><td style="font-weight:600;">1記事あたり</td><td>30分〜数日</td><td>約3〜5分</td></tr>
+    </table>
+  </div>
+  <div class="slide-number">3 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 4: 初回セットアップ - カラーパレット ====== -->
+<div class="slide">
+  <h2><span class="step-badge" style="background: #f59e0b;">初回</span> カラーパレットを設定する</h2>
+  <p style="font-size: 14px; color: #475569; margin-bottom: 16px;">
+    サイトごとの配色を登録します。URLを入力するだけで自動抽出できます。
+  </p>
+  <div class="two-col">
+    <div>
+      <div class="mockup" style="padding: 16px;">
+        <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">サイト設定 ＞ 既存サイト編集</div>
+        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+          <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">🎨 カラーパレット自動抽出</div>
+          <div class="mock-label">サイトURL</div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="mock-input" style="flex: 1; margin: 0; color: #1e293b;">https://example.com</div>
+            <div class="highlight-box" style="display: inline-block;">
+              <div class="mock-btn" style="font-size: 11px; padding: 7px 12px; white-space: nowrap;">URLからカラーを抽出</div>
+              <div class="annotation arrow-down" style="top: -28px; left: 50%; transform: translateX(-50%);">URLを入れてクリック</div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0;">
+          <span style="font-size: 11px; color: #475569; font-weight: 600;">抽出結果:</span>
+          <div class="color-dots" style="margin: 0;">
+            <div class="color-dot" style="background: #003399;"></div>
+            <div class="color-dot" style="background: #0099cc;"></div>
+            <div class="color-dot" style="background: #ff6633;"></div>
+            <div class="color-dot" style="background: #f5f5f5;"></div>
+            <div class="color-dot" style="background: #222;"></div>
+          </div>
+          <span style="font-size: 10px; color: #94a3b8;">メイン / サブ / アクセント / 背景 / テキスト</span>
+        </div>
+        <div class="mock-btn" style="font-size: 11px; margin-top: 4px;">この配色を適用</div>
+      </div>
+    </div>
+    <div>
+      <h3>なぜ必要？</h3>
+      <ul class="feature-list">
+        <li><span class="icon">🎯</span><div>サイトのブランドカラーに合った画像を生成するため</div></li>
+        <li><span class="icon">🤖</span><div>URLを入れるだけでAIが自動抽出。手動設定も可能</div></li>
+        <li><span class="icon">💾</span><div>一度設定すれば保存されるので、以降は不要</div></li>
+      </ul>
+      <div class="tip">
+        <strong>操作:</strong> 左メニュー「サイト設定」→ サイトを選択 →「既存サイト編集」タブ →「カラーパレット自動抽出」を開く
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">4 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 5: 初回セットアップ - 参照画像 ====== -->
+<div class="slide">
+  <h2><span class="step-badge" style="background: #f59e0b;">初回</span> 参照画像を登録する</h2>
+  <p style="font-size: 14px; color: #475569; margin-bottom: 12px;">
+    「こういうスタイルで作りたい」という見本画像を登録します。<strong>生成品質が大幅に安定する最重要ステップです。</strong>
+  </p>
+  <div class="two-col">
+    <div>
+      <div class="mockup" style="padding: 16px;">
+        <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 10px;">参照画像管理</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <div style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #3B82F6; color: #fff;">記事内画像用</div>
+          <div style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #f1f5f9; color: #64748b;">MV用</div>
+        </div>
+        <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 10px; background: #fff;">
+          <div style="font-size: 24px; margin-bottom: 4px;">📁</div>
+          <div style="font-size: 11px; color: #64748b;">参照画像をドラッグ＆ドロップ<br>または クリックしてアップロード</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">最大5枚</div>
+        </div>
+        <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+          <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #dbeafe, #93c5fd); border-radius: 6px; border: 1px solid #bfdbfe;"></div>
+          <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #d1fae5, #6ee7b7); border-radius: 6px; border: 1px solid #a7f3d0;"></div>
+          <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #fef3c7, #fcd34d); border-radius: 6px; border: 1px solid #fde68a;"></div>
+        </div>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 10px; font-size: 10px; color: #166534;">
+          ✅ AIが自動でデザイン分析を実行 → 分析結果が保存されます
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>登録の流れ</h3>
+      <div style="margin: 12px 0;">
+        <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <div style="background: #3B82F6; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;">1</div>
+          <div style="font-size: 13px; color: #475569; line-height: 1.6;">サイト設定ページの<strong>「参照画像管理」</strong>セクションを開く</div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <div style="background: #3B82F6; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;">2</div>
+          <div style="font-size: 13px; color: #475569; line-height: 1.6;">「記事内画像用」タブで<strong>スタイル見本をアップロード</strong>（最大5枚）</div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <div style="background: #3B82F6; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;">3</div>
+          <div style="font-size: 13px; color: #475569; line-height: 1.6;"><strong>AIが自動でデザイン分析</strong>（色・レイアウト・スタイルを解析）</div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div style="background: #059669; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;">✓</div>
+          <div style="font-size: 13px; color: #475569; line-height: 1.6;">以降の画像生成で<strong>参照画像のスタイルが自動適用</strong>される</div>
+        </div>
+      </div>
+      <div class="tip">
+        <strong>ポイント:</strong> 参照画像が多いほど安定します。既存記事で使っている画像をそのまま登録するのがベストです。
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">5 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 6: Step 1 ====== -->
+<div class="slide">
+  <h2><span class="step-badge">Step 1</span> サイトを選ぶ</h2>
+  <div class="two-col">
+    <div>
+      <p style="font-size: 14px; color: #475569; line-height: 1.8; margin-bottom: 16px;">
+        サイドバーの「対象サイト」から担当サイトを選択します。<br>
+        サイトごとの配色・スタイルが自動で適用されます。
+      </p>
+      <ul class="feature-list">
+        <li><span class="icon">🎨</span>サイト別にカラーパレットが設定済み</li>
+        <li><span class="icon">✍️</span>イラストスタイルも自動適用</li>
+        <li><span class="icon">📐</span>画像サイズもサイト別に設定済み</li>
+      </ul>
+      <div class="tip">
+        <strong>初回のみ:</strong> サイトが未登録の場合は「サイト設定」から新規登録が必要です。管理者に依頼してください。
+      </div>
+    </div>
+    <div>
+      <div class="mockup" style="padding: 16px;">
+        <div style="font-size: 10px; color: #94a3b8; font-weight: 600; margin-bottom: 8px;">対象サイト</div>
+        <div class="highlight-box" style="display: inline-block; width: 100%;">
+          <div class="mock-input" style="margin: 0; color: #1e293b; font-weight: 500;">https:/jmro.co.jp/mypicks/ &nbsp;&#9660;</div>
+          <div class="annotation arrow-down" style="top: -30px; left: 50%; transform: translateX(-50%);">ここから選択</div>
+        </div>
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+          <div style="font-size: 12px; font-weight: 600; color: #1e293b;">JMRO</div>
+          <div class="color-dots">
+            <div class="color-dot" style="background: #003399;"></div>
+            <div class="color-dot" style="background: #0099cc;"></div>
+            <div class="color-dot" style="background: #ff6633;"></div>
+            <div class="color-dot" style="background: #f5f5f5;"></div>
+            <div class="color-dot" style="background: #222;"></div>
+          </div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">&#8593; 選択するとカラーが表示</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">6 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 7: Step 2 ====== -->
+<div class="slide">
+  <h2><span class="step-badge">Step 2</span> 記事を貼る</h2>
+  <div class="two-col">
+    <div>
+      <p style="font-size: 14px; color: #475569; line-height: 1.8; margin-bottom: 16px;">
+        記事のタイトルと本文を貼り付けます。<br>
+        AIが見出し構造を読み取って画像案を提案するので、<strong>H2・H3の見出しがあるとベスト</strong>です。
+      </p>
+      <div class="tip">
+        <strong>ポイント:</strong> 記事全文でなくてもOK。見出しとその直下の文章があれば十分です。
+      </div>
+    </div>
+    <div>
+      <div class="mockup" style="padding: 16px;">
+        <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Step 1: 記事テキストを入力</div>
+        <div class="mock-label">記事タイトル</div>
+        <div class="mock-input">例: 看護師のパワハラ対策完全ガイド</div>
+        <div class="mock-label">記事本文（Markdown or HTML）</div>
+        <div class="mock-textarea">
+          記事の本文をここに貼り付けてください...<br>
+          ## 見出し2<br>
+          ### 見出し3<br>
+          などのH2/H3構造を含む形式がベストです。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">7 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 8: Step 3 ====== -->
+<div class="slide">
+  <h2><span class="step-badge">Step 3</span> AIが画像案を提案</h2>
+  <p style="font-size: 14px; color: #475569; margin-bottom: 16px;">
+    「記事を分析」ボタンを押すと、AIが記事内容を解析し、3〜5個の画像案を自動提案します。
+  </p>
+  <div class="mockup" style="padding: 16px;">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+      <div style="font-size: 14px; font-weight: 700; color: #1e293b;">Step 2: 記事を分析して画像案を生成</div>
+      <div class="mock-btn" style="font-size: 11px; padding: 5px 14px;">記事を分析</div>
+    </div>
+    <div style="border-top: 1px solid #e2e8f0; padding-top: 12px;">
+      <div style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 10px;">Step 3: 画像案を選択</div>
+      <div class="proposal-card">
+        <div class="proposal-check checked"></div>
+        <span style="font-size: 12px; font-weight: 600; color: #1e293b;">画像案 1</span>
+        <span class="proposal-type">📊 分類型</span>
+        <span style="font-size: 11px; color: #94a3b8; margin-left: auto;">H2「パワハラの種類」の下</span>
+      </div>
+      <div class="proposal-card">
+        <div class="proposal-check checked"></div>
+        <span style="font-size: 12px; font-weight: 600; color: #1e293b;">画像案 2</span>
+        <span class="proposal-type">➡️ フロー型</span>
+        <span style="font-size: 11px; color: #94a3b8; margin-left: auto;">H2「対処の手順」の下</span>
+      </div>
+      <div class="proposal-card">
+        <div class="proposal-check"></div>
+        <span style="font-size: 12px; font-weight: 600; color: #1e293b;">画像案 3</span>
+        <span class="proposal-type">⚖️ 比較型</span>
+        <span style="font-size: 11px; color: #94a3b8; margin-left: auto;">H2「転職 vs 残留」の下</span>
+      </div>
+    </div>
+  </div>
+  <div class="tip">
+    <strong>チェックボックス</strong>で生成したい案を選択（複数OK）。不要な案はチェックを外せばスキップされます。
+  </div>
+  <div class="slide-number">8 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 9: Step 4 ====== -->
+<div class="slide">
+  <h2><span class="step-badge">Step 4</span> 生成設定 → 画像生成</h2>
+  <div class="two-col">
+    <div>
+      <h3>生成設定（基本デフォルトでOK）</h3>
+      <table class="step-table" style="font-size: 12px;">
+        <tr><th>設定項目</th><th>説明</th></tr>
+        <tr><td>アスペクト比</td><td>16:9（デフォルト推奨）</td></tr>
+        <tr><td>画像解像度</td><td>2K（デフォルト推奨）</td></tr>
+        <tr><td>テイスト</td><td>「おまかせ」で自動選択</td></tr>
+        <tr><td>レイアウト</td><td>「提案に従う」で自動</td></tr>
+      </table>
+      <div class="tip" style="margin-top: 12px;">
+        <strong>基本操作:</strong> 設定はデフォルトのまま「一括生成」を押すだけでOKです。
+      </div>
+    </div>
+    <div>
+      <h3>生成ボタン</h3>
+      <div class="mockup" style="padding: 16px;">
+        <div style="margin-bottom: 12px;">
+          <div class="highlight-box" style="display: inline-block;">
+            <div class="mock-btn" style="padding: 10px 24px; font-size: 13px;">選択した 2 案を一括生成</div>
+          </div>
+          <div class="annotation arrow-left" style="right: -80px; top: 6px;">まずはコレ！</div>
+        </div>
+        <div style="font-size: 11px; color: #94a3b8; margin: 12px 0 8px;">または個別に：</div>
+        <div style="display: flex; gap: 8px;">
+          <div class="mock-btn secondary" style="font-size: 11px;">案1を生成</div>
+          <div class="mock-btn secondary" style="font-size: 11px;">案2を生成</div>
+          <div class="mock-btn secondary" style="font-size: 11px;">案3を生成</div>
+        </div>
+        <div style="margin-top: 16px; background: #eff6ff; border-radius: 6px; padding: 10px 14px;">
+          <div style="font-size: 11px; color: #3b82f6; font-weight: 600;">⏳ 生成中... 1/2 完了</div>
+          <div style="background: #dbeafe; border-radius: 4px; height: 6px; margin-top: 6px;">
+            <div style="background: #3b82f6; border-radius: 4px; height: 6px; width: 50%;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">9 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 10: Step 5 ====== -->
+<div class="slide">
+  <h2><span class="step-badge">Step 5</span> 確認・修正・ダウンロード</h2>
+  <div class="result-mock">
+    <div class="result-image">
+      <div style="text-align: center;">
+        <div style="font-size: 32px; margin-bottom: 8px;">🖼️</div>
+        <div>生成された画像</div>
+      </div>
+    </div>
+    <div class="result-actions">
+      <div style="font-size: 12px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">操作パネル</div>
+      <div class="mock-textarea" style="min-height: 40px; font-size: 10px;">修正指示を入力...</div>
+      <div class="mock-btn" style="font-size: 10px; text-align: center;">微修正して再生成</div>
+      <div class="mock-btn secondary" style="font-size: 10px; text-align: center;">🔄 同じ案で再生成</div>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 6px; margin-top: 2px;">
+        <div class="mock-btn" style="font-size: 10px; text-align: center; background: #059669;">⬇ この画像をDL</div>
+      </div>
+    </div>
+  </div>
+  <h3 style="margin-top: 20px;">生成後にできること</h3>
+  <div class="card-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+    <div class="card" style="padding: 14px; text-align: center;">
+      <div style="font-size: 22px;">✏️</div>
+      <h4 style="font-size: 12px;">微修正</h4>
+      <p style="font-size: 11px;">テキスト指示で<br>部分修正</p>
+    </div>
+    <div class="card" style="padding: 14px; text-align: center;">
+      <div style="font-size: 22px;">🔄</div>
+      <h4 style="font-size: 12px;">再生成</h4>
+      <p style="font-size: 11px;">別バリエーション<br>を取得</p>
+    </div>
+    <div class="card" style="padding: 14px; text-align: center;">
+      <div style="font-size: 22px;">✂️</div>
+      <h4 style="font-size: 12px;">トリミング</h4>
+      <p style="font-size: 11px;">余白を<br>自動除去</p>
+    </div>
+    <div class="card" style="padding: 14px; text-align: center;">
+      <div style="font-size: 22px;">📐</div>
+      <h4 style="font-size: 12px;">リサイズ</h4>
+      <p style="font-size: 11px;">ピクセル指定で<br>サイズ調整</p>
+    </div>
+  </div>
+  <div class="slide-number">10 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+<!-- ====== Slide 11: FAQ ====== -->
+<div class="slide">
+  <h2>よくある質問</h2>
+  <ul class="feature-list">
+    <li>
+      <span class="icon">❓</span>
+      <div>
+        <strong style="color: #1e293b;">提案された画像の内容を変えたい</strong><br>
+        各画像案は全て編集可能です。テキスト内容やレイアウト構成を自由に書き換えてから生成できます。
+      </div>
+    </li>
+    <li>
+      <span class="icon">❓</span>
+      <div>
+        <strong style="color: #1e293b;">生成された画像のスタイルが毎回違う</strong><br>
+        「サイト設定」→「参照画像」にスタイルの見本画像を登録すると、生成スタイルが安定します。管理者に相談してください。
+      </div>
+    </li>
+    <li>
+      <span class="icon">❓</span>
+      <div>
+        <strong style="color: #1e293b;">記事本文は全文必要？</strong><br>
+        見出し（H2/H3）とその直下の文章があれば十分です。全文でなくてもOK。
+      </div>
+    </li>
+    <li>
+      <span class="icon">❓</span>
+      <div>
+        <strong style="color: #1e293b;">画像がうまく生成されない場合は？</strong><br>
+        「同じ案で再生成」で別バリエーションを試すか、微修正で指示を追加してみてください。
+      </div>
+    </li>
+  </ul>
+  <div style="text-align: center; margin-top: 24px; padding: 20px; background: #f1f5f9; border-radius: 10px;">
+    <div style="font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">アクセスはこちら</div>
+    <div style="font-size: 16px; color: #3B82F6; font-weight: 600;">https://seo-image-generator.streamlit.app/</div>
+  </div>
+  <div class="slide-number">11 / 11</div>
+  <div class="slide-logo">SEO Image Generator</div>
+</div>
+
+</body>
+</html>

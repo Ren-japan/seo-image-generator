@@ -410,9 +410,12 @@ if st.session_state.mv_proposals:
     single_btns = {}
     for i, mv_proposal in enumerate(mv_proposals):
         with single_cols[i % 3]:
-            label = mv_proposal.get("main_title", f"案{i+1}")
+            title = mv_proposal.get("main_title", "")
+            subtitle = mv_proposal.get("subtitle", "")
+            # タイトルとサブタイトルで区別がつくラベルを作る
+            short_label = subtitle[:12] if subtitle else title[:12]
             single_btns[i] = st.button(
-                f"「{label}」を生成",
+                f"案{i+1}: {short_label}",
                 key=f"mv_gen_single_{i}",
                 width="stretch",
             )

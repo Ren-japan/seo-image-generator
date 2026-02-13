@@ -6,7 +6,7 @@
 import os
 import streamlit as st
 from lib.color_extractor import extract_colors_from_url
-from lib.prompt_templates import render_design_system
+from lib.prompt_templates import render_design_system, MV_DESIGN_SPEC_DEFAULT
 
 
 def get_cm():
@@ -364,10 +364,13 @@ with tab_edit:
 
             # MV用: 手動デザイン仕様書（Gemini分析より優先される）
             if ref_category == "mv":
-                with st.expander("📐 MVデザイン仕様書（手動・Gemini分析より優先）", expanded=False):
+                with st.expander("📐 MVデザイン仕様書（レイアウト・装飾・比率ルール）", expanded=False):
                     st.caption(
-                        "Geminiの自動分析は色の誤認が多いため、手動で確定した仕様書を記述できます。"
-                        "ここに仕様書が入力されていれば、MV生成時にGemini分析結果より優先して使われます。"
+                        "⚠️ **色の指定は不要**です（サイトのカラーパレットから自動適用されます）。\n\n"
+                        "ここには **レイアウト構造・テキスト装飾・サイズ比率・配置バランス** など"
+                        "色以外のデザインルールを記述してください。"
+                        "参照画像の色は記事テーマごとに変わるため、固定HEXではなく"
+                        "「テーマカラー」「アクセントカラー」等の役割名で指定すると安定します。"
                     )
                     existing_spec = config.get("mv_design_spec", "")
                     edited_spec = st.text_area(
@@ -375,13 +378,21 @@ with tab_edit:
                         value=existing_spec,
                         height=500,
                         key="edit_mv_design_spec",
-                        placeholder="背景、テキスト装飾、帯、人物配置など超具体的な仕様を記述...",
+                        placeholder=MV_DESIGN_SPEC_DEFAULT,
                     )
-                    if st.button("デザイン仕様書を保存", key="btn_save_mv_design_spec", type="primary"):
-                        config["mv_design_spec"] = edited_spec
-                        cm.save(site_name, config)
-                        st.session_state.site_config = config
-                        st.success("MVデザイン仕様書を保存しました。")
+                    col_save, col_default = st.columns([2, 1])
+                    with col_save:
+                        if st.button("デザイン仕様書を保存", key="btn_save_mv_design_spec", type="primary"):
+                            config["mv_design_spec"] = edited_spec
+                            cm.save(site_name, config)
+                            st.session_state.site_config = config
+                            st.success("MVデザイン仕様書を保存しました。")
+                    with col_default:
+                        if st.button("デフォルト仕様書を挿入", key="btn_insert_default_spec"):
+                            config["mv_design_spec"] = MV_DESIGN_SPEC_DEFAULT
+                            cm.save(site_name, config)
+                            st.session_state.site_config = config
+                            st.rerun()
 
     # =============================================
     # デザインシステムプロンプトのプレビュー
