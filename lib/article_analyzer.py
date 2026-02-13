@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from lib.gemini_client import GeminiClient
-from lib.prompt_templates import render_proposal_prompt
+from lib.prompt_templates import render_proposal_prompt, render_mv_proposal_prompt
 
 
 def extract_headings(article_text: str) -> list[dict]:
@@ -78,6 +78,35 @@ def propose_images(
         ]
     """
     prompt = render_proposal_prompt(article_text, site_config)
+    response_text = gemini.analyze_text(prompt)
+
+    proposals = _parse_proposals(response_text)
+    return proposals
+
+
+def propose_mv_images(
+    article_title: str,
+    article_text: str,
+    gemini: GeminiClient,
+) -> list[dict]:
+    """
+    記事タイトルと本文からMV画像案を1-3個生成する。
+
+    Returns:
+        [
+          {
+            "concept": "...",
+            "scene_description": "...",
+            "composition_type": "中央配置型|左右分割型|シーン描写型|アイコン散りばめ型",
+            "text_area": "上部|下部|左|右",
+            "mood": "...",
+            "main_elements": ["...", "..."],
+            "background_description": "..."
+          },
+          ...
+        ]
+    """
+    prompt = render_mv_proposal_prompt(article_title, article_text)
     response_text = gemini.analyze_text(prompt)
 
     proposals = _parse_proposals(response_text)

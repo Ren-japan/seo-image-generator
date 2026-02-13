@@ -30,6 +30,7 @@ def init_session_state():
         "api_key": os.getenv("GEMINI_API_KEY", ""),
         "current_site": None,
         "site_config": {},
+        # 記事内画像用
         "article_text": "",
         "article_title": "",
         "headings": [],
@@ -37,6 +38,11 @@ def init_session_state():
         "selected_proposals": [],
         "generated_images": [],
         "generation_in_progress": False,
+        # MV画像用
+        "mv_proposals": [],
+        "mv_selected_proposals": [],
+        "mv_generated_images": [],
+        "mv_generation_in_progress": False,
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -49,7 +55,8 @@ init_session_state()
 pages = st.navigation(
     {
         "メイン": [
-            st.Page("pages/01_image_generation.py", title="画像生成", icon="🖼️", default=True),
+            st.Page("pages/01_image_generation.py", title="記事内画像生成", icon="🖼️", default=True),
+            st.Page("pages/04_mv_generation.py", title="MV画像生成", icon="🎯"),
         ],
         "設定": [
             st.Page("pages/02_site_settings.py", title="サイト設定", icon="⚙️"),

@@ -23,22 +23,25 @@ def get_gemini_client():
     return GeminiClient(api_key=api_key)
 
 
-def run_ref_image_analysis(cm, site_name, config):
+def run_ref_image_analysis(cm, site_name, config, category="article"):
     """参照画像をGeminiで分析してデザイン特徴を抽出し、設定に反映する"""
     gc = get_gemini_client()
     if gc is None:
         st.error("GEMINI_API_KEYが設定されていません。")
         return config
 
-    with st.spinner("参照画像を分析中... Geminiでデザイン特徴を抽出しています"):
+    label = "記事内画像" if category == "article" else "MV画像"
+    config_key = "ref_image_analysis" if category == "article" else "mv_ref_image_analysis"
+
+    with st.spinner(f"{label}の参照画像を分析中... Geminiでデザイン特徴を抽出しています"):
         try:
-            analysis = cm.analyze_reference_images(site_name, gc)
+            analysis = cm.analyze_reference_images(site_name, gc, category=category)
             if analysis:
-                config["ref_image_analysis"] = analysis
+                config[config_key] = analysis
                 cm.save(site_name, config)
                 st.session_state.site_config = config
-                st.session_state.show_analysis_result = True
-                st.success("参照画像の分析が完了しました。")
+                st.session_state[f"show_{category}_analysis_result"] = True
+                st.success(f"{label}の参照画像分析が完了しました。")
             else:
                 st.warning("分析結果を取得できませんでした。")
         except Exception as e:
@@ -262,89 +265,123 @@ with tab_edit:
     )
 
     # =============================================
-    # 参照画像（サイト固有スタイル）
+    # 参照画像（サイト固有スタイル）- カテゴリ別
     # =============================================
     st.subheader("参照画像（スタイルリファレンス）")
-    st.caption("このサイトで使っている画像を最大5枚アップロード。アップロード時にGeminiが自動でデザイン特徴を分析します。")
+    st.caption("記事内画像とMV画像で別々の参照画像を登録できます。各カテゴリ最大5枚。アップロード時にGeminiが自動でデザイン特徴を分析します。")
 
-    # 既存の参照画像を表示
-    ref_keys = cm.list_reference_images(site_name)
-    if ref_keys:
-        st.markdown(f"**登録済み: {len(ref_keys)}枚** (最大5枚)")
-        ref_cols = st.columns(min(len(ref_keys), 5))
-        for ri, rk in enumerate(ref_keys):
-            with ref_cols[ri % 5]:
-                try:
-                    from PIL import Image as PILImage
-                    import io as _io
-                    ref_data = cm.load_reference_image(rk)
-                    ref_img = PILImage.open(_io.BytesIO(ref_data))
-                    st.image(ref_img, width="stretch")
-                    fname = rk.split("/")[-1]
-                    st.caption(fname)
-                    if st.button("🗑", key=f"del_ref_{ri}"):
-                        cm.delete_reference_image(rk)
-                        # 分析結果もクリア
-                        if "ref_image_analysis" in config:
-                            del config["ref_image_analysis"]
-                            cm.save(site_name, config)
-                            st.session_state.site_config = config
+    ref_tab_article, ref_tab_mv = st.tabs(["📊 記事内画像用", "🖼️ MV（アイキャッチ）用"])
+
+    for ref_category, ref_tab in [("article", ref_tab_article), ("mv", ref_tab_mv)]:
+        with ref_tab:
+            cat_label = "記事内画像" if ref_category == "article" else "MV画像"
+            config_key = "ref_image_analysis" if ref_category == "article" else "mv_ref_image_analysis"
+
+            # 既存の参照画像を表示
+            ref_keys = cm.list_reference_images(site_name, category=ref_category)
+            if ref_keys:
+                st.markdown(f"**登録済み: {len(ref_keys)}枚** (最大5枚)")
+                ref_cols = st.columns(min(len(ref_keys), 5))
+                for ri, rk in enumerate(ref_keys):
+                    with ref_cols[ri % 5]:
+                        try:
+                            from PIL import Image as PILImage
+                            import io as _io
+                            ref_data = cm.load_reference_image(rk)
+                            ref_img = PILImage.open(_io.BytesIO(ref_data))
+                            st.image(ref_img, width="stretch")
+                            fname = rk.split("/")[-1]
+                            st.caption(fname)
+                            if st.button("🗑", key=f"del_ref_{ref_category}_{ri}"):
+                                cm.delete_reference_image(rk)
+                                # 分析結果もクリア
+                                if config_key in config:
+                                    del config[config_key]
+                                    cm.save(site_name, config)
+                                    st.session_state.site_config = config
+                                st.rerun()
+                        except Exception:
+                            st.warning(f"読込失敗: {rk}")
+
+                # 再分析ボタン
+                if st.button(f"🔍 {cat_label}の参照画像を再分析", key=f"btn_reanalyze_ref_{ref_category}"):
+                    config = run_ref_image_analysis(cm, site_name, config, category=ref_category)
+                    st.rerun()
+
+            else:
+                st.info(f"{cat_label}の参照画像がまだ登録されていません。")
+
+            # アップロード
+            if len(ref_keys) < 5:
+                uploaded_refs = st.file_uploader(
+                    f"{cat_label}の参照画像をアップロード",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    accept_multiple_files=True,
+                    key=f"upload_ref_images_{ref_category}",
+                )
+                if uploaded_refs:
+                    added = 0
+                    for uf in uploaded_refs:
+                        if len(ref_keys) + added >= 5:
+                            st.warning("最大5枚まで登録できます。")
+                            break
+                        cm.add_reference_image(site_name, uf.name, uf.getvalue(), category=ref_category)
+                        added += 1
+                    if added > 0:
+                        st.success(f"{added}枚アップロードしました。")
+                        # 自動でデザイン分析を実行
+                        st.session_state[f"trigger_ref_analysis_{ref_category}"] = True
                         st.rerun()
-                except Exception:
-                    st.warning(f"読込失敗: {rk}")
+            else:
+                st.info("上限の5枚に達しています。削除してから追加してください。")
 
-        # 再分析ボタン
-        if st.button("🔍 参照画像を再分析", key="btn_reanalyze_ref"):
-            config = run_ref_image_analysis(cm, site_name, config)
-            st.rerun()
+            # アップロード後の自動分析トリガー
+            trigger_key = f"trigger_ref_analysis_{ref_category}"
+            if st.session_state.get(trigger_key, False):
+                del st.session_state[trigger_key]
+                config = run_ref_image_analysis(cm, site_name, config, category=ref_category)
 
-    else:
-        st.info("参照画像がまだ登録されていません。")
+            # 分析結果の表示・編集
+            existing_analysis = config.get(config_key, "")
+            if existing_analysis:
+                show_key = f"show_{ref_category}_analysis_result"
+                with st.expander(f"🎯 {cat_label}参照画像デザイン分析結果（編集可）", expanded=st.session_state.get(show_key, False)):
+                    edited_analysis = st.text_area(
+                        f"{cat_label}デザイン分析結果",
+                        value=existing_analysis,
+                        height=400,
+                        key=f"edit_analysis_{ref_category}",
+                        help="AI分析結果を手動で修正できます。色コード・サイズ・位置などを実際の参照画像に合わせて微調整してください。",
+                    )
+                    if st.button(f"分析結果を保存", key=f"btn_save_analysis_{ref_category}", type="primary"):
+                        config[config_key] = edited_analysis
+                        cm.save(site_name, config)
+                        st.session_state.site_config = config
+                        st.success("分析結果を保存しました。")
+                # 表示フラグをリセット
+                if st.session_state.get(show_key, False):
+                    st.session_state[show_key] = False
 
-    # アップロード
-    if len(ref_keys) < 5:
-        uploaded_refs = st.file_uploader(
-            "参照画像をアップロード",
-            type=["png", "jpg", "jpeg", "webp"],
-            accept_multiple_files=True,
-            key="upload_ref_images",
-        )
-        if uploaded_refs:
-            added = 0
-            for uf in uploaded_refs:
-                if len(ref_keys) + added >= 5:
-                    st.warning("最大5枚まで登録できます。")
-                    break
-                cm.add_reference_image(site_name, uf.name, uf.getvalue())
-                added += 1
-            if added > 0:
-                st.success(f"{added}枚アップロードしました。")
-                # 自動でデザイン分析を実行
-                st.session_state.trigger_ref_analysis = True
-                st.rerun()
-    else:
-        st.info("上限の5枚に達しています。削除してから追加してください。")
-
-    # アップロード後の自動分析トリガー
-    if st.session_state.get("trigger_ref_analysis", False):
-        del st.session_state.trigger_ref_analysis
-        config = run_ref_image_analysis(cm, site_name, config)
-
-    # 分析結果の表示
-    existing_analysis = config.get("ref_image_analysis", "")
-    if existing_analysis:
-        with st.expander("🎯 参照画像デザイン分析結果", expanded=st.session_state.get("show_analysis_result", False)):
-            st.markdown(existing_analysis)
-            st.divider()
-            if st.button("この分析結果を「追加スタイルノート」に反映", key="btn_apply_analysis"):
-                config["additional_notes"] = existing_analysis
-                cm.save(site_name, config)
-                st.session_state.site_config = config
-                st.success("追加スタイルノートに反映しました。")
-                st.rerun()
-        # 表示フラグをリセット
-        if st.session_state.get("show_analysis_result", False):
-            st.session_state.show_analysis_result = False
+            # MV用: 手動デザイン仕様書（Gemini分析より優先される）
+            if ref_category == "mv":
+                with st.expander("📐 MVデザイン仕様書（手動・Gemini分析より優先）", expanded=False):
+                    st.caption(
+                        "Geminiの自動分析は色の誤認が多いため、手動で確定した仕様書を記述できます。"
+                        "ここに仕様書が入力されていれば、MV生成時にGemini分析結果より優先して使われます。"
+                    )
+                    existing_spec = config.get("mv_design_spec", "")
+                    edited_spec = st.text_area(
+                        "MVデザイン仕様書",
+                        value=existing_spec,
+                        height=500,
+                        key="edit_mv_design_spec",
+                        placeholder="背景、テキスト装飾、帯、人物配置など超具体的な仕様を記述...",
+                    )
+                    if st.button("デザイン仕様書を保存", key="btn_save_mv_design_spec", type="primary"):
+                        config["mv_design_spec"] = edited_spec
+                        cm.save(site_name, config)
+                        st.session_state.site_config = config
+                        st.success("MVデザイン仕様書を保存しました。")
 
     # =============================================
     # デザインシステムプロンプトのプレビュー
