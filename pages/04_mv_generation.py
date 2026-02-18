@@ -26,17 +26,44 @@ def get_cm():
     return get_config_manager()
 
 
+def _get_preset_data(config, site_name):
+    """選択中プリセットのデータを取得する。プリセット未使用時はサイトレベルを返す。"""
+    cm = get_cm()
+    mv_presets = config.get("mv_presets", [])
+    preset_id = st.session_state.get("mv_active_preset_id", None)
+
+    if preset_id and mv_presets:
+        preset = next((p for p in mv_presets if p["id"] == preset_id), None)
+        if preset:
+            return {
+                "preset_id": preset_id,
+                "mv_ref_images": cm.get_reference_pil_images(site_name, category="mv", preset_id=preset_id) if site_name else [],
+                "mv_design_analysis": preset.get("mv_ref_image_analysis", ""),
+                "mv_design_spec": preset.get("mv_design_spec", ""),
+                "mv_style_hints": preset.get("mv_style_hints", None),
+                "mv_slot_structure": preset.get("mv_slot_structure", None),
+            }
+
+    # 後方互換: サイトレベルのデータを使用
+    return {
+        "preset_id": None,
+        "mv_ref_images": cm.get_reference_pil_images(site_name, category="mv") if site_name else [],
+        "mv_design_analysis": config.get("mv_ref_image_analysis", ""),
+        "mv_design_spec": config.get("mv_design_spec", ""),
+        "mv_style_hints": config.get("mv_style_hints", None),
+        "mv_slot_structure": config.get("mv_slot_structure", None),
+    }
+
+
 def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_name=None):
     """1案分のMV画像を生成して session_state.mv_generated_images に追加する"""
     gemini = GeminiClient(api_key=st.session_state.api_key)
     design_system = render_design_system(config)
 
-    # MV用の参照画像を取得
-    cm = get_cm()
-    mv_ref_images = []
-    if site_name:
-        mv_ref_images = cm.get_reference_pil_images(site_name, category="mv")
+    # プリセットまたはサイトレベルのデータを取得
+    pd = _get_preset_data(config, site_name)
 
+    mv_ref_images = pd["mv_ref_images"]
     if mv_ref_images:
         reference_images = mv_ref_images
         st.info(f"MV参照画像を{len(mv_ref_images)}枚使用")
@@ -44,7 +71,7 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
         reference_images = []
 
     # MV参照画像の分析結果を取得
-    mv_design_analysis = config.get("mv_ref_image_analysis", "")
+    mv_design_analysis = pd["mv_design_analysis"]
 
     # サイトカラー（MV生成で最優先される）
     site_colors = {
@@ -56,14 +83,14 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
         "danger_color": config.get("danger_color", "#E74A3B"),
     }
 
-    # MVデザイン仕様書（手動。Gemini分析より優先）
-    mv_design_spec = config.get("mv_design_spec", "")
+    # MVデザイン仕様書
+    mv_design_spec = pd["mv_design_spec"]
 
-    # サイト別MVスタイル補強ヒント（person_layout / background_style / supplement_style）
-    mv_style_hints = config.get("mv_style_hints", None)
+    # サイト別MVスタイル補強ヒント
+    mv_style_hints = pd["mv_style_hints"]
 
-    # MVスロット構造（検出済みの場合。V2テンプレートパスを使用）
-    mv_slot_structure = config.get("mv_slot_structure", None)
+    # MVスロット構造
+    mv_slot_structure = pd["mv_slot_structure"]
 
     # MV生成プロンプト
     gen_prompt = render_mv_generation_prompt(
@@ -119,11 +146,9 @@ def refine_mv_image(entry_index, refinement_text, config, site_name=None):
     entry = st.session_state.mv_generated_images[entry_index]
     current_img = entry.get("processed_image") or entry["image"]
 
-    # MV参照画像を取得
-    cm = get_cm()
-    mv_ref_images = []
-    if site_name:
-        mv_ref_images = cm.get_reference_pil_images(site_name, category="mv")
+    # MV参照画像を取得（プリセット対応）
+    pd = _get_preset_data(config, site_name)
+    mv_ref_images = pd["mv_ref_images"]
 
     # contents組み立て: 参照画像 → 生成済み画像（修正対象） → 元プロンプト+修正指示
     contents = []
@@ -197,22 +222,73 @@ config = st.session_state.site_config
 
 st.info(f"対象サイト: **{config.get('brand_name', st.session_state.current_site)}**")
 
-# MV参照画像の有無を表示
+# --- MVプリセット選択 ---
 cm = get_cm()
-mv_ref_count = len(cm.list_reference_images(st.session_state.current_site, category="mv"))
-if mv_ref_count > 0:
-    st.success(f"MV参照画像: {mv_ref_count}枚登録済み")
-else:
-    st.warning("MV参照画像が未登録です。「サイト設定」→「参照画像」→「MV用」タブから登録すると、スタイルが安定します。")
+mv_presets = config.get("mv_presets", [])
 
-# スロット構造の有無を表示
-if config.get("mv_slot_structure"):
-    slot_roles = [s["role"] for s in config["mv_slot_structure"].get("slots", [])]
-    st.success(f"MVスロット構造: 検出済み（{', '.join(slot_roles)}）→ V2テンプレートで生成")
-elif config.get("mv_design_spec", "").strip():
-    st.success("MVデザイン仕様書: 登録済み（生成時に使用されます）")
+if mv_presets:
+    # プリセットがある場合はプルダウン表示
+    preset_labels = []
+    for p in mv_presets:
+        slot_info = ""
+        slot_struct = p.get("mv_slot_structure", {})
+        if slot_struct and slot_struct.get("slots"):
+            roles = [s["role"] for s in slot_struct["slots"]]
+            slot_info = f"（{', '.join(roles)}）"
+        preset_labels.append(f"{p['name']}{slot_info}")
+
+    # 初期値をセッションステートから復元
+    active_preset_id = st.session_state.get("mv_active_preset_id", mv_presets[0]["id"])
+    active_idx = 0
+    for pi, p in enumerate(mv_presets):
+        if p["id"] == active_preset_id:
+            active_idx = pi
+            break
+
+    selected_preset_label = st.selectbox(
+        "MVプリセット",
+        preset_labels,
+        index=active_idx,
+        key="mv_gen_preset_selector",
+    )
+    selected_idx = preset_labels.index(selected_preset_label)
+    st.session_state.mv_active_preset_id = mv_presets[selected_idx]["id"]
+
+    # 選択中プリセットの情報を表示
+    active_preset = mv_presets[selected_idx]
+    pd = _get_preset_data(config, st.session_state.current_site)
+
+    ref_count = len(pd["mv_ref_images"])
+    if ref_count > 0:
+        st.success(f"MV参照画像: {ref_count}枚登録済み（{active_preset['name']}）")
+    else:
+        st.warning(f"MV参照画像が未登録です（{active_preset['name']}）。「サイト設定」→「参照画像」→「MV用」タブから登録してください。")
+
+    slot_struct = pd["mv_slot_structure"]
+    if slot_struct and slot_struct.get("slots"):
+        slot_roles = [s["role"] for s in slot_struct["slots"]]
+        st.success(f"MVスロット構造: 検出済み（{', '.join(slot_roles)}）→ V2テンプレートで生成")
+    elif pd["mv_design_spec"].strip():
+        st.success("MVデザイン仕様書: 登録済み（生成時に使用されます）")
+    else:
+        st.info("MVデザイン仕様書: 未登録（参照画像のみで生成します）")
 else:
-    st.info("MVデザイン仕様書: 未登録（参照画像のみで生成します）")
+    # プリセットなし → 従来通りサイトレベル
+    st.session_state.mv_active_preset_id = None
+
+    mv_ref_count = len(cm.list_reference_images(st.session_state.current_site, category="mv"))
+    if mv_ref_count > 0:
+        st.success(f"MV参照画像: {mv_ref_count}枚登録済み")
+    else:
+        st.warning("MV参照画像が未登録です。「サイト設定」→「参照画像」→「MV用」タブから登録すると、スタイルが安定します。")
+
+    if config.get("mv_slot_structure"):
+        slot_roles = [s["role"] for s in config["mv_slot_structure"].get("slots", [])]
+        st.success(f"MVスロット構造: 検出済み（{', '.join(slot_roles)}）→ V2テンプレートで生成")
+    elif config.get("mv_design_spec", "").strip():
+        st.success("MVデザイン仕様書: 登録済み（生成時に使用されます）")
+    else:
+        st.info("MVデザイン仕様書: 未登録（参照画像のみで生成します）")
 
 # =============================================
 # Step 1: 記事入力
@@ -264,7 +340,8 @@ if btn_auto and article_title.strip():
         try:
             st.write("記事の主題を分析し、MVテキスト案を設計中...")
             gemini = GeminiClient(api_key=st.session_state.api_key)
-            mv_slot_structure = config.get("mv_slot_structure", None)
+            _pd = _get_preset_data(config, st.session_state.current_site)
+            mv_slot_structure = _pd["mv_slot_structure"]
             mv_proposals = propose_mv_images(
                 article_title, article_text, gemini,
                 mv_slot_structure=mv_slot_structure,
@@ -283,7 +360,8 @@ if btn_auto and article_title.strip():
 
 if btn_manual:
     # 空のテンプレートを1つ追加（スロット構造がある場合はそのスロットのみ）
-    mv_slot_structure = config.get("mv_slot_structure", None)
+    _pd_manual = _get_preset_data(config, st.session_state.current_site)
+    mv_slot_structure = _pd_manual["mv_slot_structure"]
     empty_proposal = {"person_description": ""}
     if mv_slot_structure and "slots" in mv_slot_structure:
         for s in mv_slot_structure["slots"]:
@@ -308,8 +386,9 @@ if st.session_state.mv_proposals:
 
     st.subheader("Step 3: MVテキスト内容を確認・編集")
 
-    # スロット構造情報
-    mv_slot_structure = config.get("mv_slot_structure", None)
+    # スロット構造情報（プリセット対応）
+    _pd_step3 = _get_preset_data(config, st.session_state.current_site)
+    mv_slot_structure = _pd_step3["mv_slot_structure"]
     active_roles = None  # None = 全スロット表示（従来互換）
     if mv_slot_structure and "slots" in mv_slot_structure:
         active_roles = [s["role"] for s in mv_slot_structure["slots"]]

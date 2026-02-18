@@ -116,7 +116,9 @@ class ConfigManager:
     # サポートされる参照画像カテゴリ
     REF_IMAGE_CATEGORIES = ["article", "mv"]
 
-    def _ref_images_prefix(self, site_name: str, category: str = "article") -> str:
+    def _ref_images_prefix(self, site_name: str, category: str = "article", preset_id: str | None = None) -> str:
+        if category == "mv" and preset_id:
+            return f"{site_name}_ref_images/mv/{preset_id}/"
         return f"{site_name}_ref_images/{category}/"
 
     def _migrate_legacy_ref_images(self, site_name: str) -> None:
@@ -137,17 +139,17 @@ class ConfigManager:
             except Exception:
                 continue
 
-    def add_reference_image(self, site_name: str, filename: str, data: bytes, category: str = "article") -> str:
+    def add_reference_image(self, site_name: str, filename: str, data: bytes, category: str = "article", preset_id: str | None = None) -> str:
         """参照画像を追加し、storage key を返す"""
-        key = f"{self._ref_images_prefix(site_name, category)}{filename}"
+        key = f"{self._ref_images_prefix(site_name, category, preset_id)}{filename}"
         self.storage.save(key, data)
         return key
 
-    def list_reference_images(self, site_name: str, category: str = "article") -> list[str]:
-        """サイトの参照画像キー一覧を返す（カテゴリ指定）"""
+    def list_reference_images(self, site_name: str, category: str = "article", preset_id: str | None = None) -> list[str]:
+        """サイトの参照画像キー一覧を返す（カテゴリ指定、MV時はpreset_id指定可）"""
         # 初回呼び出し時に旧形式のマイグレーションを実行
         self._migrate_legacy_ref_images(site_name)
-        prefix = self._ref_images_prefix(site_name, category)
+        prefix = self._ref_images_prefix(site_name, category, preset_id)
         return self.storage.list_keys(prefix=prefix)
 
     def load_reference_image(self, key: str) -> bytes:
@@ -158,11 +160,11 @@ class ConfigManager:
         """参照画像を削除"""
         self.storage.delete(key)
 
-    def get_reference_pil_images(self, site_name: str, category: str = "article") -> list:
+    def get_reference_pil_images(self, site_name: str, category: str = "article", preset_id: str | None = None) -> list:
         """サイトの参照画像をPIL Imageのリストで返す（最大5枚）"""
         from PIL import Image
         import io
-        keys = self.list_reference_images(site_name, category)
+        keys = self.list_reference_images(site_name, category, preset_id)
         images = []
         for key in keys[:5]:  # 最大5枚制限
             try:
@@ -173,9 +175,9 @@ class ConfigManager:
                 continue
         return images
 
-    def analyze_reference_images(self, site_name: str, gemini_client, category: str = "article") -> str:
+    def analyze_reference_images(self, site_name: str, gemini_client, category: str = "article", preset_id: str | None = None) -> str:
         """参照画像をGeminiで分析し、共通デザイン特徴を抽出する"""
-        images = self.get_reference_pil_images(site_name, category)
+        images = self.get_reference_pil_images(site_name, category, preset_id)
         if not images:
             return ""
 
@@ -289,7 +291,7 @@ class ConfigManager:
         )
         return response.text if response.text else ""
 
-    def analyze_mv_slot_structure(self, site_name: str, gemini_client) -> dict:
+    def analyze_mv_slot_structure(self, site_name: str, gemini_client, preset_id: str | None = None) -> dict:
         """MV参照画像からテキストスロット構造をGemini Flashで自動検出しJSONで返す。
 
         Returns:
@@ -306,7 +308,7 @@ class ConfigManager:
         """
         import json as _json
 
-        images = self.get_reference_pil_images(site_name, category="mv")
+        images = self.get_reference_pil_images(site_name, category="mv", preset_id=preset_id)
         if not images:
             return {}
 
