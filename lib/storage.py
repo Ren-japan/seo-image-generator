@@ -146,7 +146,14 @@ class GoogleDriveStorage(StorageBackend):
         else:
             raise ValueError("credentials_json or credentials_file が必要です")
 
-        self.service = build("drive", "v3", credentials=creds)
+        # Streamlit CloudでSSLエラーが出るため、certifiのCA証明書を明示指定
+        import httplib2
+        import certifi
+        from google_auth_httplib2 import AuthorizedHttp
+
+        http = httplib2.Http(ca_certs=certifi.where())
+        authed_http = AuthorizedHttp(creds, http=http)
+        self.service = build("drive", "v3", http=authed_http)
         self.root_folder_id = folder_id
         # フォルダIDキャッシュ: パス文字列 → Drive folder ID
         self._folder_cache: dict[str, str] = {"": self.root_folder_id}
