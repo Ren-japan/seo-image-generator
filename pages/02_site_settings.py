@@ -64,18 +64,11 @@ tab_new, tab_edit = st.tabs(["新規サイト登録", "既存サイト編集"])
 with tab_new:
     st.subheader("新しいサイトを登録")
 
-    st.caption("サイトURLではなく、管理用の短い名前を付けてください。")
     new_site_name = st.text_input(
-        "サイト識別名",
+        "サイト名",
         placeholder="例: terra-clinic",
-        help="英数字・ハイフン・アンダースコアのみ。URLではありません。",
+        help="英数字・ハイフンで短く。サイドバーの一覧に表示されます。",
         key="new_site_name",
-    )
-    new_brand_name = st.text_input(
-        "ブランド名（表示名）",
-        placeholder="例: テラクリニック",
-        help="日本語OK。サイドバーやレポートに表示される名前です。",
-        key="new_brand_name",
     )
     new_site_url = st.text_input(
         "サイトURL（任意）",
@@ -94,7 +87,7 @@ with tab_new:
             st.error(f"「{new_site_name}」は既に登録されています。")
         else:
             config = cm.get_default()
-            config["brand_name"] = new_brand_name or new_site_name
+            config["brand_name"] = new_site_name
             if new_site_url:
                 config["site_url"] = new_site_url
             cm.save(new_site_name, config)
