@@ -66,33 +66,34 @@ class ConfigManager:
 
     def _ensure_default(self):
         """デフォルト設定が存在しなければ作成"""
-        if not self.storage.exists("configs/_default.json"):
+        if not self.storage.exists("_default.json"):
             self.storage.save_text(
-                "configs/_default.json",
+                "_default.json",
                 json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2),
             )
 
     def list_sites(self) -> list[str]:
         """登録済みサイト名一覧を返す"""
-        keys = self.storage.list_keys(prefix="configs/", suffix=".json")
+        keys = self.storage.list_keys(suffix=".json")
         return [
-            k.replace("configs/", "").replace(".json", "")
+            k.replace(".json", "")
             for k in keys
-            if k != "configs/_default.json"
+            if k != "_default.json"
         ]
 
     def load(self, site_name: str) -> dict:
         """サイト設定を読み込む。存在しなければデフォルトを返す"""
-        key = f"configs/{site_name}.json"
+        key = f"{site_name}.json"
         if self.storage.exists(key):
             text = self.storage.load_text(key)
             return json.loads(text)
-        default_text = self.storage.load_text("configs/_default.json")
+        # デフォルトをベースにする
+        default_text = self.storage.load_text("_default.json")
         return json.loads(default_text)
 
     def save(self, site_name: str, config: dict) -> None:
         """サイト設定を保存"""
-        key = f"configs/{site_name}.json"
+        key = f"{site_name}.json"
         self.storage.save_text(
             key,
             json.dumps(config, ensure_ascii=False, indent=2),
@@ -100,7 +101,7 @@ class ConfigManager:
 
     def delete(self, site_name: str) -> None:
         """サイト設定を削除"""
-        key = f"configs/{site_name}.json"
+        key = f"{site_name}.json"
         if self.storage.exists(key):
             self.storage.delete(key)
 
@@ -117,12 +118,26 @@ class ConfigManager:
 
     def _ref_images_prefix(self, site_name: str, category: str = "article", preset_id: str | None = None) -> str:
         if category == "mv" and preset_id:
-            return f"ref/{site_name}/mv/{preset_id}/"
-        return f"ref/{site_name}/{category}/"
+            return f"{site_name}_ref_images/mv/{preset_id}/"
+        return f"{site_name}_ref_images/{category}/"
 
     def _migrate_legacy_ref_images(self, site_name: str) -> None:
-        """旧形式の参照画像を新形式に移行（不要になったらno-op）"""
-        pass
+        """旧形式（カテゴリなし）の参照画像をarticleカテゴリに移行"""
+        legacy_prefix = f"{site_name}_ref_images/"
+        keys = self.storage.list_keys(prefix=legacy_prefix)
+        for key in keys:
+            # すでにカテゴリ付きのパスならスキップ
+            relative = key[len(legacy_prefix):]
+            if "/" in relative:
+                continue
+            # 旧形式 → article/ に移動
+            new_key = f"{legacy_prefix}article/{relative}"
+            try:
+                data = self.storage.load(key)
+                self.storage.save(new_key, data)
+                self.storage.delete(key)
+            except Exception:
+                continue
 
     def add_reference_image(self, site_name: str, filename: str, data: bytes, category: str = "article", preset_id: str | None = None) -> str:
         """参照画像を追加し、storage key を返す"""

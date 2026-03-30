@@ -346,10 +346,7 @@ MV_PROPOSAL_TEMPLATE = """あなたはSEO記事のMV（メインビジュアル/
 
 # MV用 Layer3（参照画像あり・デザイン仕様書あり）: 参照画像 + 仕様書の二重指示
 # 仕様書 = 手動記述 or Gemini自動分析結果。色はサイトカラーパレットで上書き。
-MV_GENERATION_WITH_SPEC_TEMPLATE = """【出力画像サイズ: {image_width}×{image_height}px】
-この画像は{image_width}×{image_height}pxで使用される。すべてのテキスト・人物・装飾をこのキャンバスサイズに最適化して配置すること。
-
-添付の参照画像と同じレイアウト構造・テキスト装飾・配置バランスで、テキスト内容と人物だけを差し替えたMV画像を作成してください。
+MV_GENERATION_WITH_SPEC_TEMPLATE = """添付の参照画像と同じレイアウト構造・テキスト装飾・配置バランスで、テキスト内容と人物だけを差し替えたMV画像を作成してください。
 
 == 重要: 配色の優先順位 ==
 以下の配色ルールは、デザイン仕様書内の色指定（HEXコード）より**優先**する。
@@ -394,10 +391,7 @@ MV_GENERATION_WITH_SPEC_TEMPLATE = """【出力画像サイズ: {image_width}×{
 #   supplement_style   — 補足テキストの表示スタイル
 #   [装飾系 - オプション。overridesとして条件付き注入]
 #   style_overrides    — 参照画像コピーへの上書きルール（文字列。なければ注入しない）
-MV_GENERATION_WITH_REF_TEMPLATE = """【出力画像サイズ: {image_width}×{image_height}px】
-この画像は{image_width}×{image_height}pxで使用される。すべてのテキスト・人物・装飾をこのキャンバスサイズに最適化して配置すること。
-
-添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
+MV_GENERATION_WITH_REF_TEMPLATE = """添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
 
 【最重要原則】
 参照画像のレイアウト構造・テキスト配置順序・フォント・色・装飾・背景・カード形状を完全にコピーすること。
@@ -428,10 +422,7 @@ MV_GENERATION_WITH_REF_TEMPLATE = """【出力画像サイズ: {image_width}×{i
 
 # MV用 Layer3（参照画像あり・スロット構造検出済み）: 超シンプル版
 # mv_slot_structure がある場合のみ使用。参照画像に全て委ね、テキスト内容だけ差し替える。
-MV_GENERATION_WITH_SLOT_STRUCTURE_TEMPLATE = """【出力画像サイズ: {image_width}×{image_height}px】
-この画像は{image_width}×{image_height}pxで使用される。すべてのテキスト・人物・装飾をこのキャンバスサイズに最適化して配置すること。
-
-添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
+MV_GENERATION_WITH_SLOT_STRUCTURE_TEMPLATE = """添付の参照画像のデザインを完全にコピーして、テキスト内容と人物だけを差し替えた画像を生成してください。
 
 参照画像のレイアウト・色・フォント・装飾・背景・カード形状を全てコピーする。
 参照画像に存在する要素だけを描画する。存在しない要素は追加しない。
@@ -449,16 +440,13 @@ MV_GENERATION_WITH_SLOT_STRUCTURE_TEMPLATE = """【出力画像サイズ: {image
 
 # MV用 Layer3（参照画像なし）: テンプレート型フルプロンプト
 # 色はサイトカラーパレット or AI自動判断。構造・比率・装飾のみ固定。
-MV_GENERATION_TEMPLATE = """【出力画像サイズ: {image_width}×{image_height}px】
-この画像は{image_width}×{image_height}pxで使用される。すべてのテキスト・人物・装飾をこのキャンバスサイズに最適化して配置すること。
-
-SEO記事のMV（メインビジュアル/アイキャッチ）画像を作成してください。
+MV_GENERATION_TEMPLATE = """SEO記事のMV（メインビジュアル/アイキャッチ）画像を作成してください。
 
 == 配色ルール ==
 {color_instruction}
 
 == レイアウト（厳守） ==
-画像サイズ: {image_width}×{image_height}px（{aspect_ratio}）
+画像サイズ: 横長（{aspect_ratio}）
 - 左側65%: テキスト要素すべて（上から煽り→タイトル→サブタイトル→帯→補足）
 - 右側35%: メイン人物
 - 上下左右マージン: 画像サイズの8%
@@ -739,14 +727,8 @@ def render_mv_generation_prompt(
     mv_design_spec: str = "",
     mv_style_hints: dict | None = None,
     mv_slot_structure: dict | None = None,
-    image_width: int | None = None,
-    image_height: int | None = None,
 ) -> str:
     """MV画像案（テンプレート型）からMV生成プロンプトを組み立てる"""
-
-    # サイズのデフォルト値
-    _w = image_width or 1200
-    _h = image_height or 630
 
     # 参照画像がある場合
     if has_reference_images:
@@ -759,8 +741,6 @@ def render_mv_generation_prompt(
         text_params = dict(
             person_description=person_description,
             language=language,
-            image_width=_w,
-            image_height=_h,
         )
 
         # 手動デザイン仕様書がある場合 → 参照画像 + 仕様書 + 配色指示
@@ -806,8 +786,6 @@ def render_mv_generation_prompt(
                 person_description=person_description,
                 language=language,
                 style_overrides=style_overrides,
-                image_width=_w,
-                image_height=_h,
             )
 
         # Trial 16: 3層アーキテクチャ（V1フォールバック）
@@ -871,8 +849,6 @@ def render_mv_generation_prompt(
         aspect_ratio=aspect_ratio,
         language=language,
         color_instruction=color_instruction,
-        image_width=_w,
-        image_height=_h,
     )
 
 
