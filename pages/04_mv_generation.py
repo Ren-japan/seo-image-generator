@@ -5,6 +5,7 @@ MV（メインビジュアル/アイキャッチ）画像生成ページ
 
 import io
 import json
+import re
 import datetime
 import streamlit as st
 from PIL import Image
@@ -24,6 +25,18 @@ from lib.image_postprocessor import (
 def get_cm():
     from lib.dependencies import get_config_manager
     return get_config_manager()
+
+
+def _save_to_storage(image, site_name: str, label: str):
+    """生成MV画像をストレージ（ローカル or Drive）に自動保存"""
+    from lib.dependencies import get_output_storage
+    storage = get_output_storage()
+    safe_label = re.sub(r'[\\/:*?"<>|]', '_', label)[:50]
+    date_str = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
+    key = f"generated/{site_name}/mv/{date_str}_{safe_label}.png"
+    img_bytes = image_to_bytes(image)
+    storage.save(key, img_bytes)
+    return key
 
 
 def _get_preset_data(config, site_name):
@@ -55,7 +68,7 @@ def _get_preset_data(config, site_name):
     }
 
 
-def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_name=None):
+def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_name=None, image_width=None, image_height=None):
     """1案分のMV画像を生成して session_state.mv_generated_images に追加する"""
     gemini = GeminiClient(api_key=st.session_state.api_key)
     design_system = render_design_system(config)
@@ -92,7 +105,7 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
     # MVスロット構造
     mv_slot_structure = pd["mv_slot_structure"]
 
-    # MV生成プロンプト
+    # MV生成プロンプト（サイズはテンプレート内に構造的に埋め込まれる）
     gen_prompt = render_mv_generation_prompt(
         design_system=design_system,
         mv_proposal=mv_proposal,
@@ -104,6 +117,8 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
         mv_design_spec=mv_design_spec,
         mv_style_hints=mv_style_hints,
         mv_slot_structure=mv_slot_structure,
+        image_width=image_width,
+        image_height=image_height,
     )
 
     # Gemini API呼び出し
@@ -120,6 +135,9 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
             j for j, e in enumerate(st.session_state.mv_generated_images)
             if e["proposal_idx"] == idx
         ]
+        # ストレージに自動保存
+        label = mv_proposal.get("main_title", f"mv_{idx}")
+        saved_key = _save_to_storage(gen_image, site_name or "unknown", label)
         entry = {
             "proposal_idx": idx,
             "proposal": mv_proposal,
@@ -127,6 +145,7 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
             "processed_image": None,
             "response_text": gen_text,
             "generation_prompt": gen_prompt,
+            "saved_key": saved_key,
             "timestamp": datetime.datetime.now().isoformat(),
         }
         if existing:
@@ -489,23 +508,48 @@ if st.session_state.mv_proposals:
     # ----- Step 4: 生成設定 -----
     st.subheader("Step 4: 生成設定")
 
-    mv_gen_col1, mv_gen_col2 = st.columns(2)
+    # MVサイズ入力（サイト設定のデフォルト値を使用）
+    mv_size = config.get("image_sizes", {}).get("mv", {"width": 1200, "height": 630})
+    mv_gen_col1, mv_gen_col2, mv_gen_col3 = st.columns([2, 2, 3])
 
     with mv_gen_col1:
-        mv_aspect_ratio = st.selectbox(
-            "アスペクト比",
-            SUPPORTED_ASPECT_RATIOS,
-            index=SUPPORTED_ASPECT_RATIOS.index("16:9"),
-            key="mv_gen_aspect_ratio",
+        mv_width = st.number_input(
+            "幅 (px)",
+            min_value=256, max_value=4096,
+            value=mv_size.get("width", 1200),
+            step=10,
+            key="mv_gen_width",
         )
 
     with mv_gen_col2:
-        mv_image_size = st.selectbox(
-            "画像解像度",
-            SUPPORTED_IMAGE_SIZES,
-            index=SUPPORTED_IMAGE_SIZES.index("2K"),
-            key="mv_gen_image_size",
+        mv_height = st.number_input(
+            "高さ (px)",
+            min_value=256, max_value=4096,
+            value=mv_size.get("height", 630),
+            step=10,
+            key="mv_gen_height",
         )
+
+    # サイズからアスペクト比を自動算出（Gemini APIに渡す用）
+    from math import gcd
+    _g = gcd(mv_width, mv_height)
+    _ratio_w, _ratio_h = mv_width // _g, mv_height // _g
+    # Gemini APIが受け付ける固定値に最も近いものを選ぶ
+    _target_ratio = _ratio_w / _ratio_h
+    _best_ar = "16:9"  # デフォルト
+    _min_diff = float("inf")
+    for ar in SUPPORTED_ASPECT_RATIOS:
+        w, h = map(int, ar.split(":"))
+        diff = abs(w / h - _target_ratio)
+        if diff < _min_diff:
+            _min_diff = diff
+            _best_ar = ar
+    mv_aspect_ratio = _best_ar
+
+    with mv_gen_col3:
+        st.caption(f"アスペクト比（自動）: **{mv_aspect_ratio}**")
+
+    mv_image_size = "2K"  # 固定（Gemini APIでは実質使われていない）
 
     # ----- Step 5: MV生成ボタン -----
     st.divider()
@@ -538,6 +582,7 @@ if st.session_state.mv_proposals:
                         mv_proposal, i, config,
                         mv_aspect_ratio, mv_image_size,
                         site_name=st.session_state.current_site,
+                        image_width=mv_width, image_height=mv_height,
                     )
                     if ok:
                         status.update(label=f"MV案{i+1}の生成完了!", state="complete")

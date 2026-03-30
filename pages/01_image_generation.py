@@ -10,6 +10,8 @@ import datetime
 import streamlit as st
 from PIL import Image
 
+import re
+
 from lib.gemini_client import GeminiClient, SUPPORTED_ASPECT_RATIOS, SUPPORTED_IMAGE_SIZES
 from lib.article_analyzer import extract_headings, propose_images
 from lib.prompt_templates import render_design_system, render_generation_prompt
@@ -30,6 +32,19 @@ def get_pm():
 def get_cm():
     from lib.dependencies import get_config_manager
     return get_config_manager()
+
+
+def _save_to_storage(image, site_name: str, label: str, category: str = "article"):
+    """生成画像をストレージ（ローカル or Drive）に自動保存"""
+    from lib.dependencies import get_output_storage
+    storage = get_output_storage()
+    # ファイル名に使えない文字を除去
+    safe_label = re.sub(r'[\\/:*?"<>|]', '_', label)[:50]
+    date_str = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
+    key = f"generated/{site_name}/{category}/{date_str}_{safe_label}.png"
+    img_bytes = image_to_bytes(image)
+    storage.save(key, img_bytes)
+    return key
 
 
 def refine_image(entry_index, refinement_text, config, site_name=None):
@@ -143,12 +158,16 @@ def generate_single_image(proposal, idx, config, pm, aspect_ratio, image_size, t
             j for j, e in enumerate(st.session_state.generated_images)
             if e["proposal_idx"] == idx
         ]
+        # ストレージに自動保存
+        label = proposal.get("placement", f"proposal_{idx}")
+        saved_key = _save_to_storage(gen_image, site_name or "unknown", label, "article")
         entry = {
             "proposal_idx": idx,
             "proposal": proposal,
             "image": gen_image,
             "processed_image": None,
             "response_text": gen_text,
+            "saved_key": saved_key,
             "timestamp": datetime.datetime.now().isoformat(),
         }
         if existing:
