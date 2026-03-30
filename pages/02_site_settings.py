@@ -76,8 +76,11 @@ with tab_new:
     )
 
     if st.button("サイトを登録", type="primary", key="btn_create_site"):
+        import re
         if not new_site_name:
             st.error("サイト識別名を入力してください。")
+        elif not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', new_site_name):
+            st.error("識別名は英数字・ハイフン・アンダースコアのみ使えます（URLは不可）。例: djob-kango")
         elif new_site_name in sites:
             st.error(f"「{new_site_name}」は既に登録されています。")
         else:
