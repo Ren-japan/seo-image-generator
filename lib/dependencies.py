@@ -51,24 +51,17 @@ def _get_drive_storage(folder_id: str) -> StorageBackend:
 
 
 @st.cache_resource
-def get_config_storage():
+def get_storage():
+    """全ストレージ共通: Drive or ローカル(プロジェクトルート)"""
     if _use_google_drive():
         return _get_drive_storage(_get_secret("GOOGLE_DRIVE_FOLDER_ID"))
-    return LocalStorage(PROJECT_ROOT / "configs")
+    return LocalStorage(PROJECT_ROOT)
 
 
-@st.cache_resource
-def get_preset_storage():
-    if _use_google_drive():
-        return _get_drive_storage(_get_secret("GOOGLE_DRIVE_FOLDER_ID"))
-    return LocalStorage(PROJECT_ROOT / "presets")
-
-
-@st.cache_resource
-def get_output_storage():
-    if _use_google_drive():
-        return _get_drive_storage(_get_secret("GOOGLE_DRIVE_FOLDER_ID"))
-    return LocalStorage(PROJECT_ROOT / "output")
+# 後方互換エイリアス
+get_config_storage = get_storage
+get_preset_storage = get_storage
+get_output_storage = get_storage
 
 
 @st.cache_resource
