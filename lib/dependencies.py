@@ -29,9 +29,11 @@ def _get_secret(key: str) -> str | None:
     if val:
         return val
     try:
-        return st.secrets.get(key)
+        if key in st.secrets:
+            return st.secrets[key]
     except Exception:
-        return None
+        pass
+    return None
 
 
 def _use_google_drive() -> bool:
