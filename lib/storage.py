@@ -135,7 +135,7 @@ class GoogleDriveStorage(StorageBackend):
 
     def __init__(self, folder_id: str, credentials_json: str | None = None, credentials_file: str | None = None):
         from google.oauth2 import service_account
-        from googleapiclient.discovery import build
+        from google.auth.transport.requests import AuthorizedSession
 
         # 認証情報の取得
         if credentials_json:
@@ -146,20 +146,51 @@ class GoogleDriveStorage(StorageBackend):
         else:
             raise ValueError("credentials_json or credentials_file が必要です")
 
-        # Streamlit CloudでSSLエラーが出るため、certifiのCA証明書を明示指定
-        import httplib2
-        import certifi
-        from google_auth_httplib2 import AuthorizedHttp
-
-        http = httplib2.Http(ca_certs=certifi.where())
-        authed_http = AuthorizedHttp(creds, http=http)
-        self.service = build("drive", "v3", http=authed_http)
+        # httplib2はStreamlit CloudでSSL不安定 → requestsベースのセッションを使う
+        self._session = AuthorizedSession(creds)
+        self._base_url = "https://www.googleapis.com/drive/v3"
+        self._upload_url = "https://www.googleapis.com/upload/drive/v3"
         self.root_folder_id = folder_id
         # フォルダIDキャッシュ: パス文字列 → Drive folder ID
         self._folder_cache: dict[str, str] = {"": self.root_folder_id}
 
+    # --- 内部ヘルパー: requests で Drive API v3 を直接叩く ---
+
+    def _api_get(self, endpoint: str, params: dict | None = None) -> dict:
+        """Drive API GETリクエスト"""
+        resp = self._session.get(f"{self._base_url}/{endpoint}", params=params or {})
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_post(self, endpoint: str, json_body: dict, params: dict | None = None) -> dict:
+        """Drive API POSTリクエスト"""
+        resp = self._session.post(f"{self._base_url}/{endpoint}", json=json_body, params=params or {})
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_patch(self, endpoint: str, data: bytes, content_type: str = "application/octet-stream") -> dict:
+        """Drive API PATCHリクエスト（ファイル更新）"""
+        resp = self._session.patch(
+            f"{self._upload_url}/{endpoint}",
+            data=data,
+            headers={"Content-Type": content_type},
+            params={"uploadType": "media", "supportsAllDrives": "true"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _files_list(self, q: str, fields: str = "files(id,name,mimeType)", page_token: str | None = None) -> dict:
+        """files.list をrequestsで実行"""
+        params = {
+            "q": q, "fields": f"nextPageToken,{fields}", "spaces": "drive",
+            "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        return self._api_get("files", params)
+
     def _get_or_create_folder(self, folder_path: str) -> str:
-        """パス文字列（例: "site/ref_images/mv"）に対応するDriveフォルダIDを取得or作成"""
+        """パス文字列に対応するDriveフォルダIDを取得or作成"""
         if folder_path in self._folder_cache:
             return self._folder_cache[folder_path]
 
@@ -173,16 +204,12 @@ class GoogleDriveStorage(StorageBackend):
                 parent_id = self._folder_cache[current_path]
                 continue
 
-            # 既存フォルダを検索
             query = (
                 f"name='{part}' and '{parent_id}' in parents "
                 f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
             )
-            results = self.service.files().list(
-                q=query, fields="files(id, name)", spaces="drive",
-                supportsAllDrives=True, includeItemsFromAllDrives=True,
-            ).execute()
-            files = results.get("files", [])
+            result = self._files_list(query, "files(id)")
+            files = result.get("files", [])
 
             if files:
                 parent_id = files[0]["id"]
@@ -193,10 +220,7 @@ class GoogleDriveStorage(StorageBackend):
                     "mimeType": "application/vnd.google-apps.folder",
                     "parents": [parent_id],
                 }
-                folder = self.service.files().create(
-                    body=meta, fields="id",
-                    supportsAllDrives=True,
-                ).execute()
+                folder = self._api_post("files", meta, {"supportsAllDrives": "true"})
                 parent_id = folder["id"]
 
             self._folder_cache[current_path] = parent_id
@@ -208,10 +232,8 @@ class GoogleDriveStorage(StorageBackend):
         parent_path = "/".join(key.split("/")[:-1])
         filename = key.split("/")[-1]
 
-        # 親フォルダが存在するか確認（作成はしない）
         parent_id = self._folder_cache.get(parent_path)
         if parent_id is None:
-            # キャッシュにない場合、ルートから辿って探す
             try:
                 parent_id = self._resolve_folder(parent_path)
             except FileNotFoundError:
@@ -221,11 +243,8 @@ class GoogleDriveStorage(StorageBackend):
             f"name='{filename}' and '{parent_id}' in parents "
             f"and mimeType!='application/vnd.google-apps.folder' and trashed=false"
         )
-        results = self.service.files().list(
-            q=query, fields="files(id)", spaces="drive",
-            supportsAllDrives=True, includeItemsFromAllDrives=True,
-        ).execute()
-        files = results.get("files", [])
+        result = self._files_list(query, "files(id)")
+        files = result.get("files", [])
         return files[0]["id"] if files else None
 
     def _resolve_folder(self, folder_path: str) -> str:
@@ -249,11 +268,8 @@ class GoogleDriveStorage(StorageBackend):
                 f"name='{part}' and '{parent_id}' in parents "
                 f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
             )
-            results = self.service.files().list(
-                q=query, fields="files(id)", spaces="drive",
-                supportsAllDrives=True, includeItemsFromAllDrives=True,
-            ).execute()
-            files = results.get("files", [])
+            result = self._files_list(query, "files(id)")
+            files = result.get("files", [])
             if not files:
                 raise FileNotFoundError(f"Folder not found: {folder_path}")
             parent_id = files[0]["id"]
@@ -263,27 +279,35 @@ class GoogleDriveStorage(StorageBackend):
 
     def save(self, key: str, data: bytes) -> str:
         """バイナリデータをDriveに保存"""
-        from googleapiclient.http import MediaIoBaseUpload
-
         parent_path = "/".join(key.split("/")[:-1])
         filename = key.split("/")[-1]
         parent_id = self._get_or_create_folder(parent_path) if parent_path else self.root_folder_id
 
-        # 既存ファイルがあれば上書き
         existing_id = self._find_file(key)
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/octet-stream", resumable=True)
 
         if existing_id:
-            self.service.files().update(
-                fileId=existing_id, media_body=media,
-                supportsAllDrives=True,
-            ).execute()
+            # 既存ファイル更新
+            self._api_patch(f"files/{existing_id}", data)
         else:
-            meta = {"name": filename, "parents": [parent_id]}
-            self.service.files().create(
-                body=meta, media_body=media, fields="id",
-                supportsAllDrives=True,
-            ).execute()
+            # 新規作成（multipartアップロード）
+            import requests as req_lib
+            boundary = "----DriveUploadBoundary"
+            meta_json = json.dumps({"name": filename, "parents": [parent_id]})
+            body = (
+                f"--{boundary}\r\n"
+                f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+                f"{meta_json}\r\n"
+                f"--{boundary}\r\n"
+                f"Content-Type: application/octet-stream\r\n\r\n"
+            ).encode() + data + f"\r\n--{boundary}--".encode()
+
+            resp = self._session.post(
+                f"{self._upload_url}/files",
+                data=body,
+                headers={"Content-Type": f"multipart/related; boundary={boundary}"},
+                params={"uploadType": "multipart", "supportsAllDrives": "true", "fields": "id"},
+            )
+            resp.raise_for_status()
         return key
 
     def load(self, key: str) -> bytes:
@@ -291,10 +315,12 @@ class GoogleDriveStorage(StorageBackend):
         file_id = self._find_file(key)
         if not file_id:
             raise FileNotFoundError(f"Key not found: {key}")
-        content = self.service.files().get_media(
-            fileId=file_id, supportsAllDrives=True,
-        ).execute()
-        return content
+        resp = self._session.get(
+            f"{self._base_url}/files/{file_id}",
+            params={"alt": "media", "supportsAllDrives": "true"},
+        )
+        resp.raise_for_status()
+        return resp.content
 
     def load_text(self, key: str, encoding: str = "utf-8") -> str:
         return self.load(key).decode(encoding)
@@ -305,7 +331,6 @@ class GoogleDriveStorage(StorageBackend):
     def list_keys(self, prefix: str = "", suffix: str = "") -> list[str]:
         """prefix配下の全ファイルを再帰的にリストアップ"""
         results: list[str] = []
-        # 末尾スラッシュを除去（Driveフォルダ検索で空パーツになるのを防止）
         prefix = prefix.rstrip("/")
         try:
             folder_id = self._resolve_folder(prefix) if prefix else self.root_folder_id
@@ -319,11 +344,7 @@ class GoogleDriveStorage(StorageBackend):
         page_token = None
         while True:
             query = f"'{folder_id}' in parents and trashed=false"
-            resp = self.service.files().list(
-                q=query, fields="nextPageToken, files(id, name, mimeType)",
-                spaces="drive", pageToken=page_token,
-                supportsAllDrives=True, includeItemsFromAllDrives=True,
-            ).execute()
+            resp = self._files_list(query, "files(id,name,mimeType)", page_token)
 
             for f in resp.get("files", []):
                 path = f"{current_prefix}/{f['name']}" if current_prefix else f["name"]
@@ -344,7 +365,8 @@ class GoogleDriveStorage(StorageBackend):
         """ファイルをゴミ箱に移動（完全削除はしない）"""
         file_id = self._find_file(key)
         if file_id:
-            self.service.files().update(
-                fileId=file_id, body={"trashed": True},
-                supportsAllDrives=True,
-            ).execute()
+            self._session.patch(
+                f"{self._base_url}/files/{file_id}",
+                json={"trashed": True},
+                params={"supportsAllDrives": "true"},
+            )
