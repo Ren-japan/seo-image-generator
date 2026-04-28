@@ -11,6 +11,7 @@ import streamlit as st
 from PIL import Image
 
 from lib.gemini_client import GeminiClient, SUPPORTED_ASPECT_RATIOS, SUPPORTED_IMAGE_SIZES
+from lib.image_generator import get_image_client, provider_label
 from lib.article_analyzer import propose_mv_images
 from lib.prompt_templates import render_design_system, render_mv_generation_prompt
 from lib.image_postprocessor import (
@@ -70,7 +71,12 @@ def _get_preset_data(config, site_name):
 
 def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_name=None, image_width=None, image_height=None):
     """1案分のMV画像を生成して session_state.mv_generated_images に追加する"""
-    gemini = GeminiClient(api_key=st.session_state.api_key)
+    # 画像生成クライアント (プロバイダ選択に応じて Gemini or OpenAI)
+    image_client = get_image_client(
+        provider=st.session_state.image_provider,
+        gemini_api_key=st.session_state.api_key,
+        openai_api_key=st.session_state.openai_api_key,
+    )
     design_system = render_design_system(config)
 
     # プリセットまたはサイトレベルのデータを取得
@@ -121,8 +127,8 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
         image_height=image_height,
     )
 
-    # Gemini API呼び出し
-    gen_image, gen_text = gemini.generate_image(
+    # 画像生成 API 呼び出し（プロバイダは UI で選択された方）
+    gen_image, gen_text = image_client.generate_image(
         prompt=gen_prompt,
         reference_images=reference_images if reference_images else None,
         aspect_ratio=aspect_ratio,
@@ -159,9 +165,11 @@ def generate_mv_image(mv_proposal, idx, config, aspect_ratio, image_size, site_n
 
 def refine_mv_image(entry_index, refinement_text, config, site_name=None):
     """生成済みMV画像に微修正を加えて再生成する"""
-    from google.genai import types
-
-    gemini = GeminiClient(api_key=st.session_state.api_key)
+    image_client = get_image_client(
+        provider=st.session_state.image_provider,
+        gemini_api_key=st.session_state.api_key,
+        openai_api_key=st.session_state.openai_api_key,
+    )
     entry = st.session_state.mv_generated_images[entry_index]
     current_img = entry.get("processed_image") or entry["image"]
 
@@ -169,21 +177,10 @@ def refine_mv_image(entry_index, refinement_text, config, site_name=None):
     pd = _get_preset_data(config, site_name)
     mv_ref_images = pd["mv_ref_images"]
 
-    # contents組み立て: 参照画像 → 生成済み画像（修正対象） → 元プロンプト+修正指示
-    contents = []
-
-    # 1. 参照画像（スタイルの基準）
-    if mv_ref_images:
-        for ref_img in mv_ref_images:
-            contents.append(ref_img)
-
-    # 2. 生成済み画像（修正対象として明示）
-    contents.append(current_img)
-
-    # 3. 元の生成プロンプト + 修正指示
+    # 元の生成プロンプト + 修正指示
     original_prompt = entry.get("generation_prompt", "")
     if original_prompt:
-        contents.append(
+        instruction = (
             f"上記の最後の1枚は、以下のプロンプトで生成した画像です。\n\n"
             f"--- 元のプロンプト ---\n{original_prompt}\n--- ここまで ---\n\n"
             f"この画像を以下の点だけ修正してください。それ以外のレイアウト・テキスト内容・配色・装飾はすべて維持すること。\n\n"
@@ -191,29 +188,17 @@ def refine_mv_image(entry_index, refinement_text, config, site_name=None):
         )
     else:
         # フォールバック（generation_prompt未保存の古いエントリ）
-        contents.append(
+        instruction = (
             "上記の最後の1枚を以下の指示に従って微修正してください。"
             "レイアウト構造・テキスト内容・テキスト装飾スタイル・配色は変更せず、指示された部分のみを修正してください。\n\n"
             f"【修正指示】\n{refinement_text}"
         )
 
-    response = gemini.client.models.generate_content(
-        model="gemini-3-pro-image-preview",
-        contents=contents,
-        config=types.GenerateContentConfig(
-            response_modalities=["TEXT", "IMAGE"],
-        ),
+    gen_image, gen_text = image_client.refine_image(
+        current_image=current_img,
+        instruction=instruction,
+        reference_images=mv_ref_images if mv_ref_images else None,
     )
-
-    gen_image = None
-    gen_text = None
-    if response.parts:
-        for part in response.parts:
-            if part.text is not None:
-                gen_text = part.text
-            elif part.inline_data is not None:
-                genai_img = part.as_image()
-                gen_image = Image.open(io.BytesIO(genai_img.image_bytes))
 
     if gen_image:
         entry["image"] = gen_image
@@ -237,9 +222,14 @@ if not st.session_state.api_key:
     st.error("Gemini API Keyが設定されていません。サイドバーから入力してください。")
     st.stop()
 
+# OpenAI を画像生成プロバイダに選んでいる場合は OpenAI Key も必須
+if st.session_state.image_provider == "openai" and not st.session_state.openai_api_key:
+    st.error("画像生成プロバイダが OpenAI ですが OPENAI_API_KEY が未設定です。サイドバーから入力してください。")
+    st.stop()
+
 config = st.session_state.site_config
 
-st.info(f"対象サイト: **{config.get('brand_name', st.session_state.current_site)}**")
+st.info(f"対象サイト: **{config.get('brand_name', st.session_state.current_site)}** ／ 画像生成: **{provider_label(st.session_state.image_provider)}**")
 
 # --- MVプリセット選択 ---
 cm = get_cm()

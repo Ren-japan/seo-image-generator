@@ -13,6 +13,7 @@ from PIL import Image
 import re
 
 from lib.gemini_client import GeminiClient, SUPPORTED_ASPECT_RATIOS, SUPPORTED_IMAGE_SIZES
+from lib.image_generator import get_image_client, provider_label
 from lib.article_analyzer import extract_headings, propose_images
 from lib.prompt_templates import render_design_system, render_generation_prompt
 from lib.image_postprocessor import (
@@ -49,9 +50,11 @@ def _save_to_storage(image, site_name: str, label: str, category: str = "article
 
 def refine_image(entry_index, refinement_text, config, site_name=None):
     """生成済み画像に微修正を加えて再生成する"""
-    from google.genai import types
-
-    gemini = GeminiClient(api_key=st.session_state.api_key)
+    image_client = get_image_client(
+        provider=st.session_state.image_provider,
+        gemini_api_key=st.session_state.api_key,
+        openai_api_key=st.session_state.openai_api_key,
+    )
     entry = st.session_state.generated_images[entry_index]
     current_img = entry.get("processed_image") or entry["image"]
 
@@ -61,35 +64,16 @@ def refine_image(entry_index, refinement_text, config, site_name=None):
     if site_name:
         site_ref_images = cm.get_reference_pil_images(site_name)
 
-    # contents組み立て: 参照画像 → 現在の画像 → 修正指示
-    contents = []
-    if site_ref_images:
-        for ref_img in site_ref_images:
-            contents.append(ref_img)
-    contents.append(current_img)
-    contents.append(
+    instruction = (
         "上記の画像を以下の指示に従って微修正してください。"
         "スタイル・テイスト・配色・イラストのタッチは変更せず、指示された部分のみを修正してください。\n\n"
         f"【修正指示】\n{refinement_text}"
     )
-
-    response = gemini.client.models.generate_content(
-        model="gemini-3-pro-image-preview",
-        contents=contents,
-        config=types.GenerateContentConfig(
-            response_modalities=["TEXT", "IMAGE"],
-        ),
+    gen_image, gen_text = image_client.refine_image(
+        current_image=current_img,
+        instruction=instruction,
+        reference_images=site_ref_images if site_ref_images else None,
     )
-
-    gen_image = None
-    gen_text = None
-    if response.parts:
-        for part in response.parts:
-            if part.text is not None:
-                gen_text = part.text
-            elif part.inline_data is not None:
-                genai_img = part.as_image()
-                gen_image = Image.open(io.BytesIO(genai_img.image_bytes))
 
     if gen_image:
         entry["image"] = gen_image
@@ -102,7 +86,14 @@ def refine_image(entry_index, refinement_text, config, site_name=None):
 
 def generate_single_image(proposal, idx, config, pm, aspect_ratio, image_size, taste_id, article_text, site_name=None):
     """1案分の画像を生成して session_state.generated_images に追加する"""
+    # 記事分析(auto_select_taste等)用の Gemini クライアント (常時 Gemini Flash)
     gemini = GeminiClient(api_key=st.session_state.api_key)
+    # 画像生成用のクライアント (プロバイダ選択に応じて Gemini or OpenAI)
+    image_client = get_image_client(
+        provider=st.session_state.image_provider,
+        gemini_api_key=st.session_state.api_key,
+        openai_api_key=st.session_state.openai_api_key,
+    )
     design_system = render_design_system(config)
 
     # 提案にrecommended_aspect_ratioがあればそちらを優先
@@ -144,8 +135,8 @@ def generate_single_image(proposal, idx, config, pm, aspect_ratio, image_size, t
         has_reference_images=bool(reference_images),
     )
 
-    # Gemini API呼び出し
-    gen_image, gen_text = gemini.generate_image(
+    # 画像生成 API 呼び出し（プロバイダは UI で選択された方）
+    gen_image, gen_text = image_client.generate_image(
         prompt=gen_prompt,
         reference_images=reference_images if reference_images else None,
         aspect_ratio=aspect_ratio,
@@ -192,10 +183,15 @@ if not st.session_state.api_key:
     st.error("Gemini API Keyが設定されていません。サイドバーから入力してください。")
     st.stop()
 
+# OpenAI を画像生成プロバイダに選んでいる場合は OpenAI Key も必須
+if st.session_state.image_provider == "openai" and not st.session_state.openai_api_key:
+    st.error("画像生成プロバイダが OpenAI ですが OPENAI_API_KEY が未設定です。サイドバーから入力してください。")
+    st.stop()
+
 config = st.session_state.site_config
 pm = get_pm()
 
-st.info(f"対象サイト: **{config.get('brand_name', st.session_state.current_site)}**")
+st.info(f"対象サイト: **{config.get('brand_name', st.session_state.current_site)}** ／ 画像生成: **{provider_label(st.session_state.image_provider)}**")
 
 # =============================================
 # Step 1: 記事入力

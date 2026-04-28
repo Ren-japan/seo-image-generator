@@ -28,6 +28,9 @@ from lib.dependencies import get_config_manager, get_preset_manager
 def init_session_state():
     defaults = {
         "api_key": os.getenv("GEMINI_API_KEY", ""),
+        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
+        # 画像生成プロバイダ: "gemini" or "openai"
+        "image_provider": "gemini",
         "current_site": None,
         "site_config": {},
         # 記事内画像用
@@ -120,15 +123,52 @@ with st.sidebar:
         )
         st.markdown(color_html, unsafe_allow_html=True)
 
+    # 画像生成プロバイダ選択
+    st.divider()
+    st.markdown("### 画像生成プロバイダ")
+
+    provider_options = {
+        "gemini": "Gemini (gemini-3-pro-image-preview)",
+        "openai": "OpenAI (gpt-image-2)",
+    }
+    current_provider = st.session_state.image_provider
+    selected_provider = st.radio(
+        "使用モデル",
+        options=list(provider_options.keys()),
+        format_func=lambda p: provider_options[p],
+        index=list(provider_options.keys()).index(current_provider),
+        key="sidebar_provider_select",
+        help="記事分析は常に Gemini Flash。画像生成のみここで切替できる。",
+    )
+    if selected_provider != current_provider:
+        st.session_state.image_provider = selected_provider
+        st.rerun()
+
     # APIキー状態
     st.divider()
+    st.markdown("### API Keys")
+
+    # Gemini (記事分析 + 画像生成のGemini側で必須)
     if st.session_state.api_key:
-        st.success("API Key: 設定済み", icon="✅")
+        st.success("Gemini Key: 設定済み", icon="✅")
     else:
-        st.warning("API Key: 未設定", icon="⚠️")
+        st.warning("Gemini Key: 未設定（記事分析に必須）", icon="⚠️")
         api_key_input = st.text_input("Gemini API Key", type="password", key="sidebar_api_key")
         if api_key_input:
             st.session_state.api_key = api_key_input
+            st.rerun()
+
+    # OpenAI (OpenAI 画像生成を使う場合のみ必須)
+    if st.session_state.openai_api_key:
+        st.success("OpenAI Key: 設定済み", icon="✅")
+    else:
+        if st.session_state.image_provider == "openai":
+            st.error("OpenAI Key: 未設定", icon="❌")
+        else:
+            st.caption("OpenAI Key: 未設定（OpenAI使用時に必要）")
+        openai_key_input = st.text_input("OpenAI API Key", type="password", key="sidebar_openai_api_key")
+        if openai_key_input:
+            st.session_state.openai_api_key = openai_key_input
             st.rerun()
 
 # ----- ページ実行 -----

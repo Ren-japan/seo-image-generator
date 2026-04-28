@@ -138,3 +138,42 @@ class GeminiClient:
         buf = io.BytesIO()
         image.save(buf, format=format)
         return buf.getvalue(), text
+
+    def refine_image(
+        self,
+        current_image: Image.Image,
+        instruction: str,
+        reference_images: list[Image.Image] | None = None,
+        model: str = MODEL_IMAGE,
+    ) -> tuple[Image.Image | None, str | None]:
+        """
+        既存の画像に対して微修正を加えて再生成する。アスペクト比は元画像を維持。
+        instruction は呼び出し側で完成させた指示文（boilerplate含む）を渡すこと。
+        """
+        contents: list = []
+        if reference_images:
+            for ref_img in reference_images:
+                contents.append(ref_img)
+        contents.append(current_image)
+        contents.append(instruction)
+
+        response = self.client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
+        )
+
+        gen_image: Image.Image | None = None
+        gen_text: str | None = None
+
+        if response.parts:
+            for part in response.parts:
+                if part.text is not None:
+                    gen_text = part.text
+                elif part.inline_data is not None:
+                    genai_img = part.as_image()
+                    gen_image = Image.open(io.BytesIO(genai_img.image_bytes))
+
+        return gen_image, gen_text
