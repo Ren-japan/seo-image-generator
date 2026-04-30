@@ -52,6 +52,23 @@ def _to_openai_quality(image_size: str) -> str:
     return "medium"
 
 
+# OpenAI images.edit は many-image request で 1枚あたり長辺2000px超を拒否する。
+# 余裕を見て1800pxで縮小（縮小後のフォーマット変換等で誤差が出ても安全圏）。
+_OPENAI_MAX_REF_DIMENSION = 1800
+
+
+def _shrink_for_openai(img: Image.Image, max_dim: int = _OPENAI_MAX_REF_DIMENSION) -> Image.Image:
+    """参照画像が長辺max_dimを超える場合のみアスペクト比維持で縮小して返す。"""
+    w, h = img.size
+    longest = max(w, h)
+    if longest <= max_dim:
+        return img
+    scale = max_dim / float(longest)
+    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+    resample = getattr(Image, "Resampling", Image).LANCZOS
+    return img.resize(new_size, resample)
+
+
 class OpenAIImageClient:
     """OpenAI gpt-image-2 クライアント。GeminiClient と同じインターフェースを提供。"""
 
@@ -82,8 +99,9 @@ class OpenAIImageClient:
             # 参照画像あり → images.edit でスタイルトランスファー
             image_files = []
             for i, ref_img in enumerate(reference_images):
+                shrunk = _shrink_for_openai(ref_img)
                 buf = io.BytesIO()
-                ref_img.save(buf, format="PNG")
+                shrunk.save(buf, format="PNG")
                 buf.seek(0)
                 # OpenAI SDK はファイル名を要求する
                 buf.name = f"ref_{i}.png"
@@ -164,12 +182,13 @@ class OpenAIImageClient:
         else:
             size = "1024x1024"
 
-        # 参照画像 + 現在の画像 をまとめて渡す
+        # 参照画像 + 現在の画像 をまとめて渡す（OpenAIの2000px制約に合わせて縮小）
         image_files = []
         all_images = (reference_images or []) + [current_image]
         for i, img in enumerate(all_images):
+            shrunk = _shrink_for_openai(img)
             buf = io.BytesIO()
-            img.save(buf, format="PNG")
+            shrunk.save(buf, format="PNG")
             buf.seek(0)
             buf.name = f"refine_{i}.png"
             image_files.append(buf)
