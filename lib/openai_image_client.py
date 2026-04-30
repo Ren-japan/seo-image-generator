@@ -1,7 +1,7 @@
 """
-OpenAI gpt-image-2 を使った画像生成クライアント。
+OpenAI gpt-image-2.0 を使った画像生成クライアント。
 
-⚠️ モデル名は固定 (gpt-image-2)。変更禁止。
+⚠️ モデル名は固定 (gpt-image-2.0)。変更禁止。
    ユーザー側で誤って別モデル（gpt-image-1 等）が使われないようハードコードしている。
 
 GeminiClient.generate_image / generate_image_bytes と同じシグネチャで動く。
@@ -17,7 +17,7 @@ from PIL import Image
 
 
 # ⚠️ 固定。変更禁止。 (.env で上書きも不可)
-OPENAI_IMAGE_MODEL = "gpt-image-2"
+OPENAI_IMAGE_MODEL = "gpt-image-2.0"
 
 
 # Gemini のアスペクト比 → OpenAI の size パラメータへのマッピング。
@@ -70,7 +70,7 @@ def _shrink_for_openai(img: Image.Image, max_dim: int = _OPENAI_MAX_REF_DIMENSIO
 
 
 class OpenAIImageClient:
-    """OpenAI gpt-image-2 クライアント。GeminiClient と同じインターフェースを提供。"""
+    """OpenAI gpt-image-2.0 クライアント。GeminiClient と同じインターフェースを提供。"""
 
     def __init__(self, api_key: str):
         if not api_key:
@@ -83,10 +83,10 @@ class OpenAIImageClient:
         reference_images: list[Image.Image] | None = None,
         aspect_ratio: str = "16:9",
         image_size: str = "2K",
-        model: str | None = None,  # 互換性のために受け取るが無視する（gpt-image-2固定）
+        model: str | None = None,  # 互換性のために受け取るが無視する（gpt-image-2.0固定）
     ) -> tuple[Image.Image | None, str | None]:
         """
-        OpenAI gpt-image-2 で画像を生成。
+        OpenAI gpt-image-2.0 で画像を生成。
 
         Returns:
             (生成画像, レスポンステキスト) のタプル。

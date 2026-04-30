@@ -84,5 +84,5 @@ def provider_label(provider: str) -> str:
     """UI 表示用の人間に分かるラベル"""
     p = (provider or "").lower()
     if p == PROVIDER_OPENAI:
-        return "OpenAI (gpt-image-2)"
+        return "OpenAI (gpt-image-2.0)"
     return "Gemini (gemini-3-pro-image-preview)"

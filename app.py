@@ -129,7 +129,7 @@ with st.sidebar:
 
     provider_options = {
         "gemini": "Gemini (gemini-3-pro-image-preview)",
-        "openai": "OpenAI (gpt-image-2)",
+        "openai": "OpenAI (gpt-image-2.0)",
     }
     current_provider = st.session_state.image_provider
     selected_provider = st.radio(
